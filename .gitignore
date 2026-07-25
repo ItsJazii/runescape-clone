@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/players/
+*.log
+
+# Screenshots written by tools/screenshot.mjs on every verification run.
+tools/shots/
+
+# Local tool permissions, specific to one machine.
+.devin/config.local.json

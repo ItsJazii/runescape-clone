@@ -1,0 +1,30 @@
+{
+  "name": "osrs-clone",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An Old School RuneScape clone: authoritative 600ms-tick Node server + WebGL2 browser client",
+  "scripts": {
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch src/server/index.ts",
+    "dev:client": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "cross-env NODE_ENV=production tsx src/server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/test/*.test.ts",
+    "check:social": "tsx tools/social-check.ts"
+  },
+  "dependencies": {
+    "ws": "8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/ws": "8.5.13",
+    "concurrently": "9.1.0",
+    "cross-env": "7.0.3",
+    "playwright": "^1.49.1",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vite": "6.0.5"
+  }
+}

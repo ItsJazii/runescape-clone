@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>Old School RuneScape</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: #000;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        user-select: none; -webkit-user-select: none;
+        cursor: default;
+      }
+      #stage {
+        position: absolute; top: 50%; left: 50%;
+        width: 765px; height: 503px;
+        transform-origin: center center;
+        background: #000;
+      }
+      #world {
+        position: absolute; left: 4px; top: 4px;
+        width: 512px; height: 334px;
+        display: block;
+      }
+      #ui {
+        position: absolute; left: 0; top: 0;
+        width: 765px; height: 503px;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+      #login {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 50% 35%, #3a2c18 0%, #120d06 70%);
+        color: #ffd93b; font-size: 15px; gap: 14px; z-index: 10;
+      }
+      #login h1 {
+        font-size: 34px; letter-spacing: 1px; color: #ffd93b;
+        text-shadow: 2px 2px 0 #000, 0 0 22px #a06010;
+        font-weight: 700;
+      }
+      #login p { color: #c8b898; font-size: 12px; }
+      #login .box {
+        background: #2a1f10; border: 2px solid #5a4426; padding: 18px 26px;
+        display: flex; flex-direction: column; gap: 10px; align-items: center;
+        box-shadow: 0 6px 20px rgba(0,0,0,.6);
+      }
+      #login input {
+        background: #101010; border: 1px solid #6a5636; color: #fff;
+        padding: 7px 10px; width: 220px; font-size: 14px; outline: none; text-align: center;
+      }
+      #login button {
+        background: linear-gradient(#6b5227, #3d2d13); color: #ffd93b; border: 1px solid #806333;
+        padding: 8px 26px; font-size: 15px; cursor: pointer; font-weight: 600;
+      }
+      #login button:hover { background: linear-gradient(#836430, #4c3818); }
+      #login .err { color: #ff6a5a; min-height: 16px; font-size: 12px; }
+      canvas { outline: none; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="world" width="512" height="334"></canvas>
+      <canvas id="ui" width="765" height="503"></canvas>
+      <div id="login">
+        <h1>Old School RuneScape</h1>
+        <div class="box">
+          <p>Enter a display name to enter the world</p>
+          <input id="name" maxlength="12" placeholder="Username" autocomplete="off" />
+          <button id="play">Play</button>
+          <div class="err" id="err"></div>
+        </div>
+        <p>Left-click to walk &middot; Right-click for options &middot; Middle-drag or arrow keys to rotate the camera</p>
+      </div>
+    </div>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

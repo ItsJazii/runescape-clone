@@ -1,0 +1,10 @@
+[
+  { "name": "walk", "click": [600, 300], "wait": 2600 },
+  { "name": "skills", "click": [1148, 373], "wait": 700 },
+  { "name": "equipment", "click": [1345, 373], "wait": 700 },
+  { "name": "prayer", "click": [1411, 373], "wait": 700 },
+  { "name": "magic", "click": [1477, 373], "wait": 700 },
+  { "name": "combat", "click": [1080, 373], "wait": 700 },
+  { "name": "inventory", "click": [1279, 373], "wait": 500 },
+  { "name": "rightclick-world", "click": [500, 400], "button": "right", "wait": 800 }
+]
