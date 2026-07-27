@@ -12,7 +12,11 @@
     "start": "cross-env NODE_ENV=production tsx src/server/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/test/*.test.ts",
-    "check:social": "tsx tools/social-check.ts"
+    "check:social": "tsx tools/social-check.ts",
+    "check:play": "tsx tools/play-check.ts",
+    "check:client": "node tools/client-check.mjs",
+    "shots:tabs": "node tools/tabshots.mjs",
+    "shots:world": "node tools/worldshots.mjs"
   },
   "dependencies": {
     "ws": "8.18.0"

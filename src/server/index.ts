@@ -155,7 +155,12 @@ wss.on('connection', (socket) => {
       player.sendStyle();
       sendFriends(player);
       player.sendIgnores();
+      player.sendTasks();
       player.message('Welcome to RuneScape.');
+      if (player.tasks.size === 0) {
+        player.message('Left-click the ground to walk. Right-click anything for its options.', 'system');
+        player.message('Open the Quest tab for a Getting Started checklist.', 'system');
+      }
       broadcastFriendStatus(player, true);
       console.log(`[login] ${player.username} (${world.activePlayers().length} online)`);
       return;
@@ -198,6 +203,7 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       player.resetInteraction();
       player.closeInterface();
       player.walkTo(world.collision, msg.x, msg.y);
+      if (player.path.length >= 3) player.completeTask('walk');
       return;
     }
 
@@ -259,6 +265,7 @@ function handleMessage(player: Player, msg: ClientMessage): void {
           player.recalculateBonuses();
           player.sendEquipment();
           player.playAnimation('pickup', world.tick);
+          player.completeTask('loot');
         },
       };
       if (player.x !== x || player.y !== y) player.walkTo(world.collision, x, y);

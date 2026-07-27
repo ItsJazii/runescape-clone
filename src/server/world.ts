@@ -318,7 +318,7 @@ export class World {
       entity.closeInterface();
       entity.message('Oh dear, you are dead!');
     }
-    void killer;
+    if (entity instanceof Npc && killer instanceof Player) killer.completeTask('kill');
   }
 
   private finishDeath(entity: Entity): void {
@@ -727,6 +727,7 @@ export class World {
         spotanims,
         objects,
         run: Math.round(player.runEnergy / 100),
+        runOn: player.runEnabled,
         spec: player.specialEnergy,
         prayer: player.prayerPoints,
       });

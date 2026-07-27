@@ -680,6 +680,7 @@ export function startDialogue(world: World, player: Player, npc: Npc): void {
     player.message('This person has nothing to say to you.');
     return;
   }
+  player.completeTask('talk');
   player.dialogue = { script: key, stage: 0, npcIndex: npc.index, data: { node: 'start' } };
   showNode(world, player, 'start');
 }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import '../shared/data/all.ts';
+import { TASKS } from '../shared/data/tasks.ts';
 import { Skill, levelForXp, xpForLevel } from '../shared/skills.ts';
 import { Player, normaliseName, sameName } from '../server/player.ts';
 
@@ -147,5 +148,67 @@ describe('player persistence', () => {
     const player = new Player('Tester');
     player.deserialise({ hitpoints: 9999 });
     assert.equal(player.hitpoints, levelForXp(player.xp[Skill.HITPOINTS]));
+  });
+
+  it('round-trips the Getting Started tasks', () => {
+    const player = new Player('Tester');
+    player.completeTask('chop');
+    player.completeTask('kill');
+
+    const restored = new Player('Tester');
+    restored.deserialise(JSON.parse(JSON.stringify(player.serialise())));
+    assert.deepEqual([...restored.tasks].sort(), ['chop', 'kill']);
+  });
+});
+
+describe('getting started tasks', () => {
+  it('has a unique id and a hint for every task', () => {
+    const ids = new Set(TASKS.map((t) => t.id));
+    assert.equal(ids.size, TASKS.length);
+    for (const task of TASKS) {
+      assert.ok(task.name.length > 0, `${task.id} needs a name`);
+      assert.ok(task.hint.length > 0, `${task.id} needs a hint`);
+    }
+  });
+
+  it('marks a task done exactly once', () => {
+    const player = new Player('Tester');
+    const sent: string[] = [];
+    player.send = (msg) => {
+      if (msg.t === 'tasks') sent.push(msg.done.join(','));
+    };
+    player.completeTask('chop');
+    player.completeTask('chop');
+    assert.deepEqual([...player.tasks], ['chop']);
+    assert.equal(sent.length, 1);
+  });
+
+  it('ignores unknown task ids', () => {
+    const player = new Player('Tester');
+    player.completeTask('not-a-task');
+    assert.equal(player.tasks.size, 0);
+  });
+
+  it('ticks off skilling tasks when the matching xp is earned', () => {
+    const cases: [Skill, string][] = [
+      [Skill.WOODCUTTING, 'chop'],
+      [Skill.FIREMAKING, 'fire'],
+      [Skill.FISHING, 'fish'],
+      [Skill.COOKING, 'cook'],
+      [Skill.MINING, 'mine'],
+      [Skill.SMITHING, 'smith'],
+      [Skill.MAGIC, 'spell'],
+    ];
+    for (const [skill, id] of cases) {
+      const player = new Player('Tester');
+      player.addXp(skill, 10);
+      assert.ok(player.tasks.has(id), `${id} should be ticked by skill ${skill} xp`);
+    }
+  });
+
+  it('does not tick a task for an unrelated skill', () => {
+    const player = new Player('Tester');
+    player.addXp(Skill.AGILITY, 10);
+    assert.equal(player.tasks.size, 0);
   });
 });

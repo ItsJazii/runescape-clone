@@ -20,6 +20,7 @@ uniform vec4 uTint;
 
 out vec3 vColour;
 out float vFog;
+out vec3 vWorld;
 
 void main() {
   int boneIndex = int(aBone + 0.5);
@@ -34,14 +35,18 @@ void main() {
     colour *= 0.92 + 0.10 * w;
   }
 
+  // Two-sided lambert with a cool bounce light, which gives the flat-shaded
+  // geometry the same readable contrast the original client has.
   float diffuse = max(dot(n, uLightDir), 0.0);
-  float light = uAmbient + diffuse * (1.0 - uAmbient);
+  float bounce = max(dot(n, vec3(-0.3, -0.9, 0.3)), 0.0) * 0.16;
+  float light = uAmbient + diffuse * (1.0 - uAmbient) + bounce;
   colour *= light;
   colour = mix(colour, uTint.rgb, uTint.a);
 
   float dist = distance(world.xyz, uCameraPos);
   vFog = clamp((dist - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
   vColour = colour;
+  vWorld = world.xyz;
   gl_Position = uViewProj * world;
 }`;
 
@@ -49,11 +54,28 @@ const FRAGMENT_SRC = `#version 300 es
 precision highp float;
 in vec3 vColour;
 in float vFog;
+in vec3 vWorld;
 uniform vec3 uFogColour;
 uniform float uAlpha;
+/** > 0 stipples the surface with a per-half-tile pattern, the way the original
+ *  client's textured ground tiles read at close range. */
+uniform float uGroundDetail;
 out vec4 fragColour;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
 void main() {
-  vec3 c = mix(vColour, uFogColour, vFog);
+  vec3 c = vColour;
+  if (uGroundDetail > 0.0) {
+    // 64 world units = half a tile, matching the original ground texture scale.
+    vec2 cell = floor(vWorld.xz / 64.0);
+    float n = hash(cell) * 0.6 + hash(cell * 1.7 + 3.1) * 0.4;
+    float fine = hash(floor(vWorld.xz / 16.0)) - 0.5;
+    c *= 1.0 + (n - 0.5) * uGroundDetail + fine * uGroundDetail * 0.45;
+  }
+  c = mix(c, uFogColour, vFog);
   fragColour = vec4(c, uAlpha);
 }`;
 
@@ -87,9 +109,9 @@ export class Renderer {
   width = 512;
   height = 334;
   time = 0;
-  fogColour: [number, number, number] = [0.53, 0.62, 0.72];
-  fogNear = 3200;
-  fogFar = 6400;
+  fogColour: [number, number, number] = [0.46, 0.55, 0.64];
+  fogNear = 4400;
+  fogFar = 7800;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -129,7 +151,7 @@ export class Renderer {
       throw new Error(`Program link failed: ${gl.getProgramInfoLog(program)}`);
     }
     gl.useProgram(program);
-    for (const name of ['uViewProj', 'uLightDir', 'uAmbient', 'uCameraPos', 'uFogNear', 'uFogFar', 'uFogColour', 'uTime', 'uTint', 'uAlpha']) {
+    for (const name of ['uViewProj', 'uLightDir', 'uAmbient', 'uCameraPos', 'uFogNear', 'uFogFar', 'uFogColour', 'uTime', 'uTint', 'uAlpha', 'uGroundDetail']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     for (let i = 0; i < 14; i++) {
@@ -208,14 +230,16 @@ export class Renderer {
       camera.targetY + sp * camera.distance,
       camera.targetZ - cy * cp * camera.distance,
     ];
-    perspective(this.proj, 42 * DEG, this.width / this.height, 24, 8000);
+    // 38 degrees vertical matches the original client's 512-unit focal length
+    // over a 512x334 viewport.
+    perspective(this.proj, 38 * DEG, this.width / this.height, 24, 8000);
     lookAt(this.view, this.eye, [camera.targetX, camera.targetY, camera.targetZ], [0, 1, 0]);
     multiply(this.viewProj, this.proj, this.view);
     invert(this.invViewProj, this.viewProj);
 
     gl.uniformMatrix4fv(this.uniforms.uViewProj!, false, this.viewProj);
     gl.uniform3f(this.uniforms.uLightDir!, 0.42, 0.78, -0.46);
-    gl.uniform1f(this.uniforms.uAmbient!, 0.68);
+    gl.uniform1f(this.uniforms.uAmbient!, 0.55);
     gl.uniform3fv(this.uniforms.uCameraPos!, this.eye);
     gl.uniform1f(this.uniforms.uFogNear!, this.fogNear);
     gl.uniform1f(this.uniforms.uFogFar!, this.fogFar);
@@ -223,7 +247,13 @@ export class Renderer {
     gl.uniform1f(this.uniforms.uTime!, time);
     gl.uniform4f(this.uniforms.uTint!, 0, 0, 0, 0);
     gl.uniform1f(this.uniforms.uAlpha!, 1);
+    gl.uniform1f(this.uniforms.uGroundDetail!, 0);
     this.resetBones();
+  }
+
+  /** Enables the stippled ground texture. Terrain only; models stay flat. */
+  setGroundDetail(strength: number): void {
+    this.gl.uniform1f(this.uniforms.uGroundDetail!, strength);
   }
 
   resetBones(): void {

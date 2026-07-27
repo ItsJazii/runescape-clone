@@ -74,8 +74,11 @@ function protectedFrom(entity: Entity, type: AttackType): boolean {
 /* Player attacking                                                    */
 /* ------------------------------------------------------------------ */
 
-export function playerCanReach(world: World, player: Player, target: Entity): boolean {
-  const range = player.autocastSpell !== null ? 10 : player.attackRange;
+/** Spells reach 10 tiles whether they are autocast or cast by hand. */
+export const SPELL_RANGE = 10;
+
+export function playerCanReach(world: World, player: Player, target: Entity, override?: number): boolean {
+  const range = override ?? (player.autocastSpell !== null ? SPELL_RANGE : player.attackRange);
   const dist = combatDistance(player, target);
   if (dist > range) return false;
   if (range > 1) {
@@ -182,7 +185,8 @@ export function castCombatSpell(world: World, player: Player, target: Entity, sp
     player.message('You do not have enough runes to cast this spell.');
     return false;
   }
-  if (!playerCanReach(world, player, target)) return false;
+  // A spell reaches 10 tiles regardless of what the caster is holding.
+  if (!playerCanReach(world, player, target, SPELL_RANGE)) return false;
 
   consumeRunes(player, spell);
   player.face(target.x, target.y);

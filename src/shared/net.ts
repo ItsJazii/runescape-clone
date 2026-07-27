@@ -129,7 +129,10 @@ export type ServerMessage =
       spotanims: NetSpotAnim[];
       /** Dynamically changed objects (doors opening etc.) */
       objects: { x: number; y: number; p: number; id: number; rot: number; type: number; original: number }[];
+      /** Run energy, 0-100. */
       run: number;
+      /** Whether the run toggle is on, so the orb can light up. */
+      runOn: boolean;
       spec: number;
       prayer: number;
     }
@@ -152,5 +155,7 @@ export type ServerMessage =
   | { t: 'style'; index: number; autoRetaliate: boolean; autocast: number | null }
   | { t: 'design'; look: number[] }
   | { t: 'makeAmount'; options: { item: number; name: string; level?: number; enabled?: boolean }[]; title: string }
+  /** Ids of the completed "Getting Started" tasks. */
+  | { t: 'tasks'; done: string[] }
   | { t: 'sound'; name: string }
   | { t: 'pong' };

@@ -34,13 +34,27 @@ let renderer: Renderer;
 let scene: WorldScene;
 let started = false;
 
+/**
+ * Camera limits chosen to match the original client's fixed-mode framing.
+ * With a 38 degree vertical FOV the horizontal focal length is
+ * 334 / (2 * tan(19 deg)) = 485px, so a 128-unit tile at the player's depth
+ * covers 128 * 485 / distance pixels. RuneScape's default zoom puts a tile at
+ * roughly 42px, i.e. about 12 tiles across the 512px viewport.
+ */
+const CAMERA_DEFAULT_PITCH = 0.80;
+const CAMERA_DEFAULT_DISTANCE = 1480;
+const CAMERA_MIN_DISTANCE = 820;
+const CAMERA_MAX_DISTANCE = 2600;
+/** Strength of the stippled ground texture. */
+const GROUND_DETAIL = 0.11;
+
 const camera: CameraState = {
   targetX: 0,
   targetY: 0,
   targetZ: 0,
   yaw: 0,
-  pitch: 0.74,
-  distance: 1250,
+  pitch: CAMERA_DEFAULT_PITCH,
+  distance: CAMERA_DEFAULT_DISTANCE,
 };
 
 function fitStage(): void {
@@ -70,6 +84,8 @@ function startGame(): void {
       ui.minimapOrigin = { x: scene.map.minX, y: scene.map.minY };
       ui.onResetCamera = () => {
         camera.yaw = 0;
+        camera.pitch = CAMERA_DEFAULT_PITCH;
+        camera.distance = CAMERA_DEFAULT_DISTANCE;
       };
       ui.onLogout = () => {
         conn.close();
@@ -150,7 +166,10 @@ uiCanvas.addEventListener(
     const { x, y } = toStage(event);
     ui.handleMouseMove(x, y);
     if (ui.mouseInViewport) {
-      camera.distance = Math.max(520, Math.min(2800, camera.distance + Math.sign(event.deltaY) * 110));
+      camera.distance = Math.max(
+        CAMERA_MIN_DISTANCE,
+        Math.min(CAMERA_MAX_DISTANCE, camera.distance + Math.sign(event.deltaY) * 90),
+      );
     } else {
       ui.handleWheel(event.deltaY);
     }
@@ -206,6 +225,10 @@ function tileUnderCursor(sx: number, sy: number): { x: number; y: number } | nul
 function entityScreenPos(view: EntityView): [number, number, number] | null {
   const h = scene.heightAt(view.renderX + 0.5, view.renderY + 0.5, view.plane);
   return renderer.projectToScreen((view.renderX + 0.5) * TILE, h + 60, (view.renderY + 0.5) * TILE);
+}
+
+function insideViewport(sx: number, sy: number): boolean {
+  return sx >= VIEWPORT.x && sx < VIEWPORT.x + VIEWPORT.w && sy >= VIEWPORT.y && sy < VIEWPORT.y + VIEWPORT.h;
 }
 
 function findHover(sx: number, sy: number): HoverTarget | null {
@@ -554,17 +577,19 @@ function drawWorld(self: EntityView, now: number): void {
   const cx = Math.round(self.renderX);
   const cy = Math.round(self.renderY);
 
-  // Terrain and scenery.
-  for (const chunk of scene.visibleChunks(cx, cy, plane, 52)) {
-    renderer.draw(chunk.terrain);
-    renderer.draw(chunk.scenery);
-  }
+  // Terrain, with the stippled ground texture; then scenery, flat-shaded.
+  const chunks = [...scene.visibleChunks(cx, cy, plane, 52)];
+  renderer.setGroundDetail(GROUND_DETAIL);
+  for (const chunk of chunks) renderer.draw(chunk.terrain);
+  renderer.setGroundDetail(0);
+  for (const chunk of chunks) renderer.draw(chunk.scenery);
   // The floor above, so upper storeys are visible from below the stairs.
   if (plane + 1 < 3) {
-    for (const chunk of scene.visibleChunks(cx, cy, plane + 1, 24)) {
-      renderer.draw(chunk.terrain);
-      renderer.draw(chunk.scenery);
-    }
+    const above = [...scene.visibleChunks(cx, cy, plane + 1, 24)];
+    renderer.setGroundDetail(GROUND_DETAIL);
+    for (const chunk of above) renderer.draw(chunk.terrain);
+    renderer.setGroundDetail(0);
+    for (const chunk of above) renderer.draw(chunk.scenery);
   }
 
   // Animated fires.
@@ -768,5 +793,124 @@ function drawXpDrops(now: number): void {
 
 void itemIcon;
 void SCREEN_H;
+
+/* ------------------------------------------------------------------ */
+/* Test hook                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Read-only window on the live client, used by `tools/client-check.mjs` to
+ * assert on what the player can actually see and click. Nothing in the game
+ * reads this back, so it cannot affect behaviour.
+ */
+Object.defineProperty(window, 'game', {
+  value: {
+    get tick() {
+      return state.tick;
+    },
+    get self() {
+      const s = state.self;
+      return s ? { x: Math.round(s.renderX), y: Math.round(s.renderY), plane: s.plane, hp: s.hp, maxHp: s.maxHp, anim: s.anim } : null;
+    },
+    get levels() {
+      return Array.from(state.levels);
+    },
+    get inventory() {
+      return state.inventory.items.map((id, i) => (id === null || id < 0 ? null : { id, name: itemDef(id)?.name, amount: state.inventory.amounts[i] }));
+    },
+    get chat() {
+      return state.chat.map((l) => l.text);
+    },
+    get activeTab() {
+      return ui.activeTab;
+    },
+    get tasks() {
+      return [...state.tasksDone];
+    },
+    get hoverText() {
+      return ui.hoverText;
+    },
+    get npcs() {
+      return [...state.npcs.values()].map((n) => ({
+        id: n.id,
+        name: n.defId !== undefined ? npcDef(n.defId)?.name : undefined,
+        x: Math.round(n.renderX),
+        y: Math.round(n.renderY),
+        hp: n.hp,
+        maxHp: n.maxHp,
+      }));
+    },
+    get groundItems() {
+      return state.groundItems.map((g) => ({ id: g.item, name: itemDef(g.item)?.name, x: g.x, y: g.y, amount: g.amount }));
+    },
+    get menu() {
+      return ui.contextMenu ? ui.contextMenu.entries.map((e) => e.label.replace(/<col=[0-9a-f]{6}>/g, '')) : null;
+    },
+    get interface() {
+      return state.openInterface;
+    },
+    get dialogue() {
+      return state.dialogue ? { lines: state.dialogue.lines, options: state.dialogue.options } : null;
+    },
+    /** On-screen position of the nearest NPC with this name. */
+    npcScreenPos(name: string) {
+      const self = state.self;
+      if (!self) return null;
+      let best: { x: number; y: number; tile: { x: number; y: number } } | null = null;
+      let bestDist = Infinity;
+      for (const npc of state.npcs.values()) {
+        if (npc.defId === undefined || npcDef(npc.defId)?.name !== name) continue;
+        const pos = entityScreenPos(npc);
+        if (!pos) continue;
+        const sx = VIEWPORT.x + pos[0];
+        const sy = VIEWPORT.y + pos[1];
+        if (!insideViewport(sx, sy)) continue;
+        const d = Math.hypot(npc.renderX - self.renderX, npc.renderY - self.renderY);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { x: sx, y: sy, tile: { x: Math.round(npc.renderX), y: Math.round(npc.renderY) } };
+        }
+      }
+      return best;
+    },
+    /** Screen position of the nearest scenery object with the given name that is
+     *  actually on screen, so a test click lands in the viewport. */
+    objectScreenPos(name: string) {
+      const self = state.self;
+      if (!self) return null;
+      let best: { x: number; y: number; tile: { x: number; y: number } } | null = null;
+      let bestDist = Infinity;
+      for (const inst of scene.nearbyObjects(Math.round(self.renderX), Math.round(self.renderY), self.plane, 12)) {
+        if (objectDef(inst.obj.id)?.name !== name) continue;
+        const pos = renderer.projectToScreen(inst.worldX, inst.worldY + 60, inst.worldZ);
+        if (!pos) continue;
+        const sx = VIEWPORT.x + pos[0];
+        const sy = VIEWPORT.y + pos[1];
+        if (!insideViewport(sx, sy)) continue;
+        const d = Math.hypot(inst.obj.x - self.renderX, inst.obj.y - self.renderY);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { x: sx, y: sy, tile: { x: inst.obj.x, y: inst.obj.y } };
+        }
+      }
+      return best;
+    },
+    /** What the client would do for a left click at this screen position. */
+    hoverAt(sx: number, sy: number) {
+      const hover = findHover(sx, sy);
+      return hover ? hover.label.replace(/<col=[0-9a-f]{6}>/g, '') : null;
+    },
+    /** The world tile under a screen position, for measuring camera framing. */
+    tileAt(sx: number, sy: number) {
+      return tileUnderCursor(sx, sy);
+    },
+    get camera() {
+      return { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance };
+    },
+    send(msg: unknown) {
+      conn.send(msg as never);
+    },
+  },
+});
 
 

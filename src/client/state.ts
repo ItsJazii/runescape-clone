@@ -111,6 +111,9 @@ export class GameState {
   totalXp = 0;
 
   runEnergy = 100;
+  runEnabled = true;
+  /** Completed "Getting Started" task ids. */
+  tasksDone = new Set<string>();
   prayerPoints = 1;
   specialEnergy = 1000;
   activePrayers = new Set<number>();
@@ -233,6 +236,10 @@ export class GameState {
         this.activePrayers = new Set(msg.active);
         break;
 
+      case 'tasks':
+        this.tasksDone = new Set(msg.done);
+        break;
+
       case 'style':
         this.styleIndex = msg.index;
         this.autoRetaliate = msg.autoRetaliate;
@@ -245,6 +252,7 @@ export class GameState {
     this.tick = msg.tick;
     this.lastSyncAt = now;
     this.runEnergy = msg.run;
+    this.runEnabled = msg.runOn;
     this.prayerPoints = msg.prayer;
     this.specialEnergy = msg.spec;
     this.groundItems = msg.items;

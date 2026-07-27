@@ -80,6 +80,14 @@ export function handleObjectAction(world: World, player: Player, id: number, x: 
   if (!obj) return;
   const def = objectDef(obj.id);
   if (!def) return;
+
+  // Examine is answered from anywhere: it never walks you over and never
+  // fails with "I can't reach that!", exactly as in RuneScape.
+  if (action === 'Examine') {
+    player.message(def.examine);
+    return;
+  }
+
   const fp = objectFootprint(obj);
   const range = obj.type === 0 ? 1 : 1;
 
@@ -792,6 +800,7 @@ export function handleItemAction(world: World, player: Player, slot: number, ite
       player.actionDelay = 3;
       player.message(`You eat the ${def.name.toLowerCase()}.`);
       if (heal > 0) player.message(`It heals some health.`);
+      player.completeTask('eat');
       return;
     }
     case 'Bury': {
@@ -864,6 +873,7 @@ export function equipItem(world: World, player: Player, slot: number): void {
   player.sendInventory();
   player.sendEquipment();
   player.sendStyle();
+  player.completeTask('equip');
   void world;
 }
 
@@ -1114,6 +1124,7 @@ export function openBank(player: Player): void {
   player.bank.compact();
   player.sendBank();
   player.send({ t: 'iface', id: 'bank' });
+  player.completeTask('bank');
 }
 
 export function openShop(player: Player, key: string): void {
@@ -1122,6 +1133,7 @@ export function openShop(player: Player, key: string): void {
   player.openInterface = 'shop';
   player.currentShop = key;
   sendShop(player, key);
+  player.completeTask('shop');
 }
 
 export function sendShop(player: Player, key: string): void {

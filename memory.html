@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>osrs-clone &mdash; session memory</title>
+<style>
+  :root {
+    --bg: #1d1a15;
+    --panel: #2b2620;
+    --panel2: #332e24;
+    --stone: #5b5346;
+    --ink: #e8e2d4;
+    --dim: #b3ab99;
+    --gold: #ffb000;
+    --green: #4ec24e;
+    --red: #e05a5a;
+    --blue: #7ab0f0;
+    --border: #0b0a08;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 20px 80px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 4px; color: var(--gold); letter-spacing: .3px; }
+  h2 {
+    font-size: 20px; color: var(--gold); margin: 40px 0 12px;
+    border-bottom: 2px solid var(--stone); padding-bottom: 6px;
+  }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: #ffd77a; }
+  p, li { color: var(--ink); }
+  .sub { color: var(--dim); margin: 0 0 24px; }
+  section, .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 12px 0;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  code, kbd, pre {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 13px;
+  }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 3px; color: #ffd77a; }
+  pre {
+    background: #14120e; border: 1px solid var(--border); border-radius: 4px;
+    padding: 12px 14px; overflow-x: auto; color: #d6f0d6; margin: 10px 0;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #3d372c; vertical-align: top; }
+  th { color: var(--gold); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  .ok { color: var(--green); font-weight: 600; }
+  .bad { color: var(--red); font-weight: 600; }
+  .tag {
+    display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+    padding: 2px 8px; border-radius: 10px; margin-right: 6px; vertical-align: middle;
+  }
+  .tag.fix { background: #2f5a2a; color: #b9f0b0; }
+  .tag.new { background: #2a4a7a; color: #bcd9ff; }
+  .tag.art { background: #6a4a20; color: #ffd8a0; }
+  .tag.todo { background: #5a2a2a; color: #ffc0c0; }
+  ul { padding-left: 22px; }
+  li { margin: 5px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel2); border-radius: 5px; padding: 14px 16px; text-align: center; }
+  .stat .n { display: block; font-size: 26px; font-weight: 700; color: var(--green); }
+  .stat .l { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; }
+  .warn {
+    border-left: 4px solid var(--gold); background: #33291a;
+    padding: 12px 16px; border-radius: 0 5px 5px 0; margin: 12px 0;
+  }
+  .files { font-size: 13.5px; }
+  .files td:first-child { white-space: nowrap; color: var(--blue); font-family: ui-monospace, Consolas, monospace; }
+  footer { margin-top: 48px; color: var(--dim); font-size: 13px; text-align: center; }
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>osrs-clone &mdash; session memory</h1>
+<p class="sub">
+  Handover note written at the end of the session, so everything can be picked up cold in the morning.
+  Written by Devin. Repo: <code>E:\Tests\opus 5\runescape</code>
+</p>
+
+<section>
+  <h3 style="margin-top:0">Start here in the morning</h3>
+  <pre><code># 1. build (the client is served from dist/, so this must be current)
+npm run build
+
+# 2. start the server
+npm start                      # http://localhost:43594/
+
+# 3. in a second terminal, prove it all still works
+npm test                       # 103 unit tests, no server needed
+npm run check:play             # 91 gameplay checks over the wire
+npm run check:client           # 50 checks played through the browser UI
+npm run check:social           # friends / ignore / private chat
+
+# 4. eyeball the rendering
+npm run shots:tabs             # writes tools/shots/t-*.png
+npm run shots:world            # writes tools/shots/w-*.png</code></pre>
+  <div class="warn">
+    <strong>If <code>npm start</code> dies with EADDRINUSE:</strong> a previous node child is still holding the port.
+    <br><code>Get-NetTCPConnection -LocalPort 43594 -State Listen</code> then <code>Stop-Process -Id &lt;pid&gt; -Force</code>
+  </div>
+</section>
+
+<h2>What was asked</h2>
+<section>
+  <p>
+    "I applied the game but I didn't see much working &mdash; can you test it yourself and make it an exact
+    replica of how everything works? I've never played so I have no idea."
+  </p>
+  <p>Follow-up decisions taken during the session:</p>
+  <ul>
+    <li><strong>Priority:</strong> interface fidelity first, then bug fixes, then a guided intro.</li>
+    <li><strong>3D world:</strong> match OSRS closely (camera, lighting, ground texturing).</li>
+  </ul>
+</section>
+
+<h2>The headline finding</h2>
+<section>
+  <p>
+    <strong>The engine was already in good shape.</strong> Combat maths, every skill, pathfinding, NPC
+    aggression, death and respawn with item-keeping, banking, shops, dialogue, prayer drain, magic, and the
+    social system were all working and faithful to the real formulas. "Nothing worked" came down to three
+    things:
+  </p>
+  <ol>
+    <li>
+      <strong>The Skills, Prayer and Magic tabs drew plain coloured circles.</strong> The spellbook was 34
+      identical blobs and the prayer book 29 grey discs &mdash; genuinely unusable, which makes the whole
+      game feel broken even though the logic underneath was fine.
+    </li>
+    <li><strong>The camera was about twice as far out as the real client</strong>, so everything looked small and remote.</li>
+    <li><strong>There was no guidance whatsoever</strong> &mdash; you spawn in a field with no idea what to do, which matters a lot for someone who has never played.</li>
+  </ol>
+</section>
+
+<h2>Final test results</h2>
+<div class="grid">
+  <div class="stat"><span class="n">103</span><span class="l">unit tests</span></div>
+  <div class="stat"><span class="n">91</span><span class="l">gameplay checks</span></div>
+  <div class="stat"><span class="n">50</span><span class="l">client UI checks</span></div>
+  <div class="stat"><span class="n">0</span><span class="l">failures</span></div>
+</div>
+<section>
+  <table>
+    <thead><tr><th>Suite</th><th>Command</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Unit tests</td><td><code>npm test</code></td><td class="ok">103 / 103 pass</td></tr>
+      <tr><td>Typecheck + bundle</td><td><code>npm run build</code></td><td class="ok">clean</td></tr>
+      <tr><td>Gameplay probe (wire)</td><td><code>npm run check:play</code></td><td class="ok">91 / 91 pass</td></tr>
+      <tr><td>Client probe (browser)</td><td><code>npm run check:client</code></td><td class="ok">50 / 50 pass</td></tr>
+      <tr><td>Social</td><td><code>npm run check:social</code></td><td class="ok">all pass</td></tr>
+      <tr><td>Legacy screenshot smoke</td><td><code>node tools/screenshot.mjs ...</code></td><td class="ok">no console errors</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<h2>Real bugs found and fixed</h2>
+
+<section>
+  <h3><span class="tag fix">fix</span>Manually cast spells used the weapon's melee range</h3>
+  <p>
+    <code>playerCanReach()</code> only granted the 10-tile spell range when a spell was <em>autocast</em>.
+    A hand-cast spell fell back to <code>player.attackRange</code>, which is 1 while unarmed, so clicking a
+    spell then a target more than one tile away failed <em>silently</em> &mdash; no message, no rune use,
+    nothing. This is why magic looked completely dead.
+  </p>
+  <p>Fixed in <code>src/server/combat.ts</code>: added <code>SPELL_RANGE = 10</code> and an explicit range
+     override, which <code>castCombatSpell()</code> now passes.</p>
+
+  <h3><span class="tag fix">fix</span>Examine walked you to the target and could fail</h3>
+  <p>
+    Object <code>Examine</code> went through <code>walkAndDo()</code>, so examining anything far away made you
+    trudge over and often ended in "I can't reach that!". In RuneScape examine is instant from anywhere.
+    <code>handleObjectAction()</code> in <code>src/server/actions.ts</code> now answers Examine before any
+    pathing. (NPC and ground-item examine were already instant.)
+  </p>
+
+  <h3><span class="tag fix">fix</span>The client could not tell whether Run was enabled</h3>
+  <p>
+    The run orb and the Options toggle both guessed from <code>runEnergy &gt; 0</code>, so they lied whenever
+    run was switched off with energy left. Added <code>runOn</code> to the sync packet
+    (<code>src/shared/net.ts</code>) and wired it through <code>state.ts</code> and the orb / options tab.
+  </p>
+</section>
+
+<h2>Interface work</h2>
+<section>
+  <h3><span class="tag new">new</span><code>src/client/ui/glyphs.ts</code></h3>
+  <p>
+    Procedurally drawn interface art, cached into small offscreen canvases, in the same chunky flat style as
+    the existing item sprites in <code>icons.ts</code>:
+  </p>
+  <ul>
+    <li><strong>23 skill icons</strong> &mdash; crossed swords, heart, pickaxe, flexed arm, boot, hammer, shield, potion, fish, bow, purse, cooking pot, praying hands, needle &amp; thread, flame, stars, fletching knife, axe in a log, rune disc, horned skull, sprout, hammer &amp; saw, box trap.</li>
+    <li><strong>29 prayer icons</strong> &mdash; grouped into families via <code>PRAYER_FAMILY</code> (defence / strength / attack / ranged / magic / protect-*, etc.). Each family shares a base glyph and gains detail with its tier, so the book reads at a glance like the real one.</li>
+    <li><strong>34 spell icons</strong> &mdash; combat spells take their <em>shape</em> from the tier (Strike = dart, Bolt = forked bolt, Blast = burst, Wave = three crests) and their <em>colour</em> from the element. Teleports are rune tablets with a city-coloured swirl, curses are drain arrows, enchants are gems, alchemy is coins over a flame.</li>
+  </ul>
+
+  <h3><span class="tag art">art</span>Tab readouts, framing and layout</h3>
+  <ul>
+    <li>Prayer, Magic and Getting Started tabs each gained an OSRS-style readout strip naming whatever the cursor is over.</li>
+    <li>The spellbook strip shows the spell's level, xp, and rune costs <strong>coloured green or red by whether you are carrying enough</strong>.</li>
+    <li>New <code>frame()</code> helper draws the chunky bordered panel with corner studs; used by the bank, shop, make-amount and equipment-stats interfaces.</li>
+    <li>Shop slots highlight on hover, grey out when out of stock, and a bottom strip shows name / price / stock.</li>
+    <li>Tab strip: inventory is now a backpack and magic is a wizard hat rather than generic shapes.</li>
+  </ul>
+</section>
+
+<h2>3D world</h2>
+<section>
+  <h3><span class="tag art">art</span>Camera matched to the real client</h3>
+  <p>
+    The framing was measured rather than guessed, using a new <code>window.game.tileAt(sx, sy)</code> hook that
+    reports which world tile sits under a screen position.
+  </p>
+  <table>
+    <thead><tr><th></th><th>Tiles across the 512px viewport</th></tr></thead>
+    <tbody>
+      <tr><td>Before</td><td>10</td></tr>
+      <tr><td>First attempt (distance 880)</td><td>7 &mdash; too close</td></tr>
+      <tr><td class="ok">Now (distance 1480)</td><td class="ok">13 &mdash; matches OSRS</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The arithmetic, kept in a comment in <code>main.ts</code>: with a 38&deg; vertical FOV the horizontal focal
+    length is <code>334 / (2 &times; tan 19&deg;) = 485px</code>, so a 128-unit tile at the player's depth covers
+    <code>128 &times; 485 / distance</code> pixels. 1480 puts a tile at ~42px.
+  </p>
+
+  <h3><span class="tag art">art</span>Lighting and ground texture</h3>
+  <ul>
+    <li>Ambient dropped 0.68 &rarr; 0.55 and a cool bounce term added, so the flat-shaded geometry has readable contrast.</li>
+    <li>Fog pushed back (near 3200 &rarr; 4400, far 6400 &rarr; 7800) and darkened, killing the washed-out haze.</li>
+    <li>New <code>uGroundDetail</code> fragment-shader path stipples terrain with a per-half-tile hash pattern. It is switched on for terrain draws only and off for models, via <code>renderer.setGroundDetail()</code>.</li>
+    <li>The compass reset button now restores the default pitch and zoom, not just the yaw.</li>
+  </ul>
+</section>
+
+<h2>Guided intro for a first-time player</h2>
+<section>
+  <p>
+    A 16-item <strong>Getting Started</strong> checklist replaces the stub Quest tab. It is tracked
+    server-side, persisted in the save file, ticks off automatically as you play, highlights the next
+    outstanding task in yellow, and spells out how to do it.
+  </p>
+  <ul>
+    <li>Definitions live in <code>src/shared/data/tasks.ts</code> (id, name, hint).</li>
+    <li><code>Player.completeTask()</code> fires once per task and pushes a <code>tasks</code> packet.</li>
+    <li>Skilling tasks hook a single place &mdash; the <code>XP_TASKS</code> map inside <code>Player.addXp()</code> &mdash; rather than being sprinkled through the action handlers.</li>
+    <li>Other hooks: <code>startDialogue</code> (talk), <code>equipItem</code> (equip), <code>openBank</code> / <code>openShop</code>, ground-item take (loot), eat, <code>togglePrayer</code>, <code>killEntity</code> (kill), and the walk packet.</li>
+    <li>New accounts also get two lines of chat on login: how to walk, and where the checklist is.</li>
+  </ul>
+</section>
+
+<h2>New verification tooling</h2>
+<section>
+  <table class="files">
+    <thead><tr><th>File</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>tools/play-check.ts</td>
+        <td>91 checks driving the real WebSocket protocol: movement and running, woodcutting, firemaking, mining, smelting, fishing, combat, NPC retaliation, equipment and bonuses, food, prayer and altars, magic (combat / alchemy / teleport), banking, shops, dialogue, doors and stairs, ground items, chat, examine, aggression and death. <code>npm run check:play</code></td>
+      </tr>
+      <tr>
+        <td>tools/client-check.mjs</td>
+        <td>50 checks played through the browser like a person: clicks the ground to walk, hovers and right-clicks a tree, chops it, fights a chicken, opens all 13 tabs, uses the inventory menu, trades and talks to a shop keeper, opens a bank, verifies the task list. <code>npm run check:client</code></td>
+      </tr>
+      <tr>
+        <td>tools/tabshots.mjs</td>
+        <td>Screenshots the Skills / Prayer / Magic tabs with the cursor parked so the hover readouts render. <code>npm run shots:tabs</code></td>
+      </tr>
+      <tr>
+        <td>tools/worldshots.mjs</td>
+        <td>Screenshots the 3D view at nine landmarks (spawn, village, general store, chicken farm, bridge, Al Kharid gate, Draynor, swamp, wheat field). <code>npm run shots:world</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    Both probes are backed by <code>window.game</code>, a read-only debug hook at the bottom of
+    <code>src/client/main.ts</code> exposing the player, chatbox, inventory, NPCs, ground items, open
+    interface, context menu, active tab, task list, camera, plus <code>npcScreenPos()</code>,
+    <code>objectScreenPos()</code>, <code>hoverAt()</code> and <code>tileAt()</code>. Nothing in the game reads
+    it back, so it cannot affect behaviour.
+  </p>
+</section>
+
+<h2>Hard-won gotchas (all also written into AGENTS.md)</h2>
+<section>
+  <ul>
+    <li>
+      <strong><code>::tele x y</code> keeps your current plane.</strong> This cost real debugging time: after the
+      stairs test the probe was on plane 1, and every later teleport stayed there, so objects "vanished"
+      because <code>world.findObject</code> searches the player's plane. Always write <code>::tele x y 0</code>.
+    </li>
+    <li>
+      <strong><code>objectScreenPos()</code> must bound-check the viewport.</strong> Projecting an off-screen
+      object and clicking it lands on the side panel, which looks <em>exactly</em> like broken picking. I chased
+      a phantom "right-click menus are broken" bug for a while because of this &mdash; menus were fine.
+    </li>
+    <li>
+      <strong>NPCs wander</strong>, so a test that needs to stand next to one cannot trust a spawn coordinate.
+      <code>play-check.ts</code> has <code>stepOntoNpc()</code> which re-locates the nearest match and retries.
+    </li>
+    <li>
+      <strong>Aggression is capped by combat level.</strong> <code>NpcDef.aggroMaxLevel</code> is 15 for a Dark
+      wizard, so a boosted test account is simply ignored. Reset combat stats before testing aggro.
+    </li>
+    <li>
+      <strong>Panel content must fit <code>PANEL.h</code> = 261px.</strong> Skills, Prayer, Magic and Getting
+      Started all draw a grid plus a description strip; overflow spills into the bottom tab row at y=466 rather
+      than being clipped.
+    </li>
+    <li>
+      <strong>Combat at level 1 is genuinely slow</strong> and that is correct. Unarmed, an accurate-style
+      level-1 player has a max hit of 1 and about a 58% hit chance, so a 3hp chicken takes ~10 attacks. Early
+      probe runs looked like "combat is broken" when it was just faithful maths plus bad luck.
+    </li>
+    <li>The blue octagon in the Lumbridge courtyard is the fountain, not a rendering bug.</li>
+    <li><strong>The client is served from <code>dist/client</code></strong>, so <code>npm start</code> serves a stale bundle until you rebuild. Console errors that look like real bugs are often just a stale dist.</li>
+  </ul>
+</section>
+
+<h2>Every file touched</h2>
+<section>
+  <table class="files">
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td>src/client/ui/glyphs.ts</td><td><span class="tag new">new</span>23 skill + 29 prayer + 34 spell icons</td></tr>
+      <tr><td>src/shared/data/tasks.ts</td><td><span class="tag new">new</span>the 16 Getting Started task definitions</td></tr>
+      <tr><td>tools/play-check.ts</td><td><span class="tag new">new</span>91-check gameplay probe</td></tr>
+      <tr><td>tools/client-check.mjs</td><td><span class="tag new">new</span>50-check browser probe</td></tr>
+      <tr><td>tools/tabshots.mjs</td><td><span class="tag new">new</span>interface screenshots</td></tr>
+      <tr><td>tools/worldshots.mjs</td><td><span class="tag new">new</span>world screenshots</td></tr>
+      <tr><td>src/client/ui/ui.ts</td><td>real icons wired in; Prayer/Magic/Quest tabs rebuilt; <code>frame()</code>, <code>wrapText()</code>, <code>countInventory()</code> helpers; shop polish; run-orb fix; tab icons</td></tr>
+      <tr><td>src/client/main.ts</td><td>camera constants and zoom range; ground-detail draw pass; <code>insideViewport()</code>; the <code>window.game</code> debug hook</td></tr>
+      <tr><td>src/client/gl/renderer.ts</td><td>38&deg; FOV, ambient 0.55 + bounce light, fog pushed back, <code>uGroundDetail</code> shader path and <code>setGroundDetail()</code></td></tr>
+      <tr><td>src/client/state.ts</td><td><code>runEnabled</code>, <code>tasksDone</code>, and the <code>tasks</code> packet</td></tr>
+      <tr><td>src/server/combat.ts</td><td><span class="tag fix">fix</span><code>SPELL_RANGE</code> and the range override on <code>playerCanReach()</code></td></tr>
+      <tr><td>src/server/actions.ts</td><td><span class="tag fix">fix</span>instant Examine; task hooks for equip / eat / bank / shop</td></tr>
+      <tr><td>src/server/player.ts</td><td><code>tasks</code> set, <code>completeTask()</code>, <code>sendTasks()</code>, <code>XP_TASKS</code>, persistence, prayer task hook</td></tr>
+      <tr><td>src/server/world.ts</td><td><code>runOn</code> in the sync packet; kill task hook</td></tr>
+      <tr><td>src/server/index.ts</td><td>login sends tasks + welcome tips; walk and loot task hooks</td></tr>
+      <tr><td>src/server/dialogue.ts</td><td>talk task hook</td></tr>
+      <tr><td>src/shared/net.ts</td><td><code>runOn</code> on sync, new <code>tasks</code> server message</td></tr>
+      <tr><td>src/test/player.test.ts</td><td>6 new tests covering task completion, persistence and the xp mapping</td></tr>
+      <tr><td>package.json</td><td><code>check:play</code>, <code>check:client</code>, <code>shots:tabs</code>, <code>shots:world</code></td></tr>
+      <tr><td>AGENTS.md</td><td>new commands, verification steps, gotchas, interface-art and camera sections</td></tr>
+    </tbody>
+  </table>
+  <p style="color:var(--dim)">Net: 14 files modified, 6 added, roughly +660 / &minus;162 lines excluding the new tools.</p>
+</section>
+
+<h2>Screenshots to look at</h2>
+<section>
+  <p>All in <code>tools/shots/</code>. The ones worth opening first:</p>
+  <ul>
+    <li><code>fresh-getting-started.png</code> &mdash; what a brand-new account sees: welcome tips in chat and the 0/16 checklist with the first hint.</li>
+    <li><code>t-skills.png</code>, <code>t-prayer.png</code>, <code>t-magic.png</code> &mdash; the three tabs that were coloured circles, now with icons and hover readouts.</li>
+    <li><code>w-chicken-farm.png</code>, <code>w-general-store.png</code>, <code>w-al-kharid-gate.png</code> &mdash; camera framing, lighting and ground texture.</li>
+    <li><code>c15-bank.png</code>, <code>c14-shop.png</code> &mdash; the framed interfaces.</li>
+  </ul>
+</section>
+
+<h2>Honest status &amp; what's next</h2>
+<section>
+  <div class="warn">
+    This is <strong>not</strong> a 1:1 replica and cannot be &mdash; the real game has twenty years of content.
+    What it is now is a faithful, legible OSRS core loop with no known broken systems.
+  </div>
+  <h3>Known limits</h3>
+  <ul>
+    <li>Actor and scenery models are low-poly boxes. Recognisable, not RuneScape.</li>
+    <li>Three quests (Cook's Assistant, Sheep Shearer, The Restless Ghost) &mdash; the dialogue engine supports more.</li>
+    <li>Map is Lumbridge / Al Kharid / Draynor / Wizards' Tower / the swamp and mines, not all of Gielinor.</li>
+    <li>No trading between players, no Grand Exchange, no minigames.</li>
+    <li><code>aggroCooldown</code> on <code>Npc</code> is declared and decremented but never set &mdash; harmless dead code, could be wired up or removed.</li>
+  </ul>
+  <h3 class="">Suggested next steps <span class="tag todo">not started</span></h3>
+  <ol>
+    <li><strong>Better models</strong> &mdash; actors and scenery are the biggest remaining gap to "looks like OSRS".</li>
+    <li><strong>More map</strong> &mdash; extend north toward Varrock, or fill in interiors.</li>
+    <li>More quests, using the existing <code>SCRIPTS</code> dialogue engine in <code>dialogue.ts</code>.</li>
+    <li>Player-to-player trading (the right-click entry already exists and says "not available yet").</li>
+  </ol>
+</section>
+
+<footer>
+  Saved before bed. Everything is committed locally &mdash; nothing has been pushed.<br>
+  Run the four verification commands at the top to confirm the state matches this note.
+</footer>
+
+</main>
+</body>
+</html>

@@ -2,10 +2,12 @@ import { AttackStyle } from '../../shared/combat.ts';
 import { EQUIP_SLOT_NAMES, itemDef } from '../../shared/data/items.ts';
 import { PRAYERS } from '../../shared/data/prayers.ts';
 import { SPELLS, SpellKind } from '../../shared/data/spells.ts';
+import { TASKS } from '../../shared/data/tasks.ts';
 import { SKILL_NAMES, SKILL_COUNT, Skill, levelForXp, xpForLevel } from '../../shared/skills.ts';
 import type { Connection } from '../net.ts';
 import type { GameState } from '../state.ts';
 import { itemIcon } from './icons.ts';
+import { prayerIcon, skillIcon, spellIcon } from './glyphs.ts';
 
 /* ------------------------------------------------------------------ */
 /* Layout - the classic fixed-mode 765x503 client                      */
@@ -45,7 +47,7 @@ interface Region {
 const TAB_NAMES = [
   'Combat Options',
   'Skills',
-  'Quest List',
+  'Getting Started',
   'Inventory',
   'Worn Equipment',
   'Prayer',
@@ -326,9 +328,16 @@ export class UI {
     const maxHp = levelForXp(s.xp[Skill.HITPOINTS]) || 10;
     this.orb(529, 55, hp / Math.max(1, maxHp), `${hp}`, '#a02020', 'Hitpoints', 'heart');
     this.orb(529, 90, s.prayerPoints / Math.max(1, levelForXp(s.xp[Skill.PRAYER])), `${s.prayerPoints}`, '#4a7ab0', 'Prayer', 'prayer');
-    this.orb(535, 125, s.runEnergy / 100, `${s.runEnergy}`, '#c8a020', 'Run energy', 'run', () => {
-      this.conn.send({ t: 'toggleRun' });
-    });
+    this.orb(
+      535,
+      125,
+      s.runEnergy / 100,
+      `${s.runEnergy}`,
+      s.runEnabled ? '#c8a020' : '#6a6050',
+      `Toggle Run (${s.runEnabled ? 'on' : 'off'})`,
+      'run',
+      () => this.conn.send({ t: 'toggleRun' }),
+    );
     this.orb(556, 152, s.specialEnergy / 1000, `${Math.floor(s.specialEnergy / 10)}`, '#20a0a0', 'Special attack', 'spec');
   }
 
@@ -381,7 +390,7 @@ export class UI {
         ctx.fillRect(-6, -4, 12, 4);
         break;
       case 'run':
-        ctx.fillStyle = this.state.runEnergy > 0 ? '#f0d060' : '#7a7060';
+        ctx.fillStyle = this.state.runEnabled && this.state.runEnergy > 0 ? '#f0d060' : '#7a7060';
         ctx.beginPath();
         ctx.moveTo(-5, 6);
         ctx.lineTo(1, -1);
@@ -473,12 +482,22 @@ export class UI {
         ctx.closePath();
         ctx.fill();
         break;
-      case 3: // inventory
-        ctx.fillStyle = '#8a6a3a';
-        ctx.fillRect(-8, -7, 16, 14);
-        ctx.fillStyle = '#5a4020';
-        ctx.fillRect(-8, -7, 16, 3);
+      case 3: {
+        // A backpack, like the real inventory tab.
+        ctx.fillStyle = '#6a4a24';
+        ctx.beginPath();
+        ctx.moveTo(-8, 8);
+        ctx.lineTo(-8, -3);
+        ctx.quadraticCurveTo(0, -11, 8, -3);
+        ctx.lineTo(8, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#9a7038';
+        ctx.fillRect(-8, 0, 16, 4);
+        ctx.fillStyle = '#4a3018';
+        ctx.fillRect(-3, 1, 6, 7);
         break;
+      }
       case 4: // equipment
         ctx.fillStyle = '#a0a0a8';
         ctx.fillRect(-6, -8, 12, 10);
@@ -490,16 +509,24 @@ export class UI {
         ctx.fillRect(-2, -9, 4, 17);
         ctx.fillRect(-7, -4, 14, 4);
         break;
-      case 6: // magic
-        ctx.fillStyle = '#5a7ad0';
+      case 6: {
+        // A wizard's hat with a sparkle, like the real magic tab.
+        ctx.fillStyle = '#3a4ab0';
         ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.moveTo(0, -11);
+        ctx.lineTo(7, 5);
+        ctx.lineTo(-7, 5);
+        ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = '#c0d8f0';
+        ctx.fillStyle = '#2a3480';
+        ctx.fillRect(-10, 5, 20, 4);
+        ctx.fillStyle = '#e8d860';
         ctx.beginPath();
-        ctx.arc(-2, -2, 3, 0, Math.PI * 2);
+        ctx.arc(1, -2, 1.6, 0, Math.PI * 2);
+        ctx.arc(-3, 2, 1.2, 0, Math.PI * 2);
         ctx.fill();
         break;
+      }
       case 7: // clan
         ctx.fillStyle = '#c8a24a';
         ctx.fillRect(-8, -6, 16, 12);
@@ -667,56 +694,59 @@ export class UI {
   }
 
   private skillIcon(skill: number, x: number, y: number): void {
-    const ctx = this.ctx;
-    const colours: Record<number, string> = {
-      [Skill.ATTACK]: '#9a3a3a',
-      [Skill.HITPOINTS]: '#c04040',
-      [Skill.MINING]: '#6a7a8a',
-      [Skill.STRENGTH]: '#3a7a3a',
-      [Skill.AGILITY]: '#3a5a9a',
-      [Skill.SMITHING]: '#8a7a5a',
-      [Skill.DEFENCE]: '#5a6a9a',
-      [Skill.HERBLORE]: '#3a8a3a',
-      [Skill.FISHING]: '#5a8ab0',
-      [Skill.RANGED]: '#6a8a3a',
-      [Skill.THIEVING]: '#7a3a7a',
-      [Skill.COOKING]: '#9a5a3a',
-      [Skill.PRAYER]: '#d8d8e0',
-      [Skill.CRAFTING]: '#8a6a3a',
-      [Skill.FIREMAKING]: '#d07020',
-      [Skill.MAGIC]: '#4a5ac0',
-      [Skill.FLETCHING]: '#5a8a5a',
-      [Skill.WOODCUTTING]: '#4a7a2a',
-      [Skill.RUNECRAFT]: '#b0a040',
-      [Skill.SLAYER]: '#5a5a5a',
-      [Skill.FARMING]: '#4a9a4a',
-      [Skill.CONSTRUCTION]: '#8a6a4a',
-      [Skill.HUNTER]: '#7a6a4a',
-    };
-    ctx.fillStyle = colours[skill] ?? '#888';
-    ctx.beginPath();
-    ctx.arc(x, y, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.beginPath();
-    ctx.arc(x - 2, y - 2, 3, 0, Math.PI * 2);
-    ctx.fill();
+    const icon = skillIcon(skill);
+    this.ctx.drawImage(icon, Math.round(x - icon.width / 2), Math.round(y - icon.height / 2));
   }
 
   private drawQuestTab(): void {
-    this.panelTitle('Quest List');
-    const quests = [
-      ["Cook's Assistant", 'cooks_assistant'],
-      ['Sheep Shearer', 'sheep_shearer'],
-      ['The Restless Ghost', 'restless_ghost'],
-    ];
-    let y = PANEL.y + 34;
-    for (const [name] of quests) {
-      this.text(name, PANEL.x + 10, y, '#c02020', { size: 12 });
-      y += 16;
+    const done = this.state.tasksDone;
+    this.panelTitle(`Getting Started  ${done.size}/${TASKS.length}`);
+
+    // The first outstanding task gets its hint spelled out, so a player who has
+    // never touched RuneScape always has an obvious next thing to try.
+    const next = TASKS.find((t) => !done.has(t.id));
+    const rowH = 12;
+    let y = PANEL.y + 26;
+    let hovered: (typeof TASKS)[number] | null = null;
+    for (const task of TASKS) {
+      const complete = done.has(task.id);
+      const over = this.mouseX >= PANEL.x + 6 && this.mouseX < PANEL.x + PANEL.w - 8 && this.mouseY >= y - 9 && this.mouseY < y + 3;
+      if (over) hovered = task;
+      // Tick box.
+      this.ctx.fillStyle = complete ? '#2f6a24' : '#2e2920';
+      this.ctx.fillRect(PANEL.x + 8, y - 9, 10, 10);
+      bevel(this.ctx, PANEL.x + 8, y - 9, 10, 10);
+      if (complete) {
+        this.ctx.strokeStyle = '#7dff7d';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(PANEL.x + 10, y - 4);
+        this.ctx.lineTo(PANEL.x + 12.5, y - 1);
+        this.ctx.lineTo(PANEL.x + 16, y - 7);
+        this.ctx.stroke();
+      }
+      const colour = complete ? '#40c040' : task === next ? '#ffff00' : '#c8c0a8';
+      this.text(task.name, PANEL.x + 23, y, colour, { size: 11 });
+      this.region(PANEL.x + 6, y - 10, PANEL.w - 14, rowH, { tooltip: `${task.name} - ${task.hint}` });
+      y += rowH;
     }
-    this.text('Talk to the Cook, Fred the Farmer', PANEL.x + 10, y + 16, '#e8e8e8', { size: 10 });
-    this.text('and Father Aereck to begin.', PANEL.x + 10, y + 28, '#e8e8e8', { size: 10 });
+
+    const stripY = PANEL.y + 26 + TASKS.length * rowH;
+    const stripH = PANEL.y + PANEL.h - stripY - 4;
+    this.ctx.fillStyle = '#332e24';
+    this.ctx.fillRect(PANEL.x + 4, stripY, PANEL.w - 10, stripH);
+    bevel(this.ctx, PANEL.x + 4, stripY, PANEL.w - 10, stripH);
+    const shown = hovered ?? next;
+    if (shown) {
+      this.text(shown.name, PANEL.x + 10, stripY + 12, '#ffb000', { size: 11, bold: true });
+      this.wrapText(shown.hint, PANEL.x + 10, stripY + 24, PANEL.w - 22, 10, '#e8e8e8');
+    } else {
+      this.text('All done. Explore Gielinor!', PANEL.x + PANEL.w / 2, stripY + 20, '#40c040', {
+        align: 'center',
+        size: 11,
+        bold: true,
+      });
+    }
   }
 
   private drawInventoryTab(): void {
@@ -883,9 +913,7 @@ export class UI {
     const h = 220;
     const x = VIEWPORT.x + (VIEWPORT.w - w) / 2;
     const y = VIEWPORT.y + 40;
-    ctx.fillStyle = this.stone;
-    ctx.fillRect(x, y, w, h);
-    bevel(ctx, x, y, w, h);
+    frame(ctx, this.stone, x, y, w, h);
     this.text('Equipment Stats', x + w / 2, y + 18, '#ffb000', { align: 'center', size: 13, bold: true });
     this.closeButton(x + w - 22, y + 4, () => {
       this.showEquipStats = false;
@@ -940,52 +968,97 @@ export class UI {
     const prayerLevel = levelForXp(s.xp[Skill.PRAYER]);
     this.panelTitle(`Prayer  ${s.prayerPoints}/${prayerLevel}`);
     const cols = 5;
+    // The bottom strip mirrors the real prayer book, which names whichever
+    // prayer the cursor is over rather than relying on a floating tooltip.
+    let described: string | null = null;
     for (let i = 0; i < PRAYERS.length; i++) {
       const p = PRAYERS[i];
       const x = PANEL.x + 6 + (i % cols) * 36;
-      const y = PANEL.y + 24 + Math.floor(i / cols) * 34;
+      const y = PANEL.y + 22 + Math.floor(i / cols) * 31;
       const unlocked = prayerLevel >= p.level;
       const active = s.activePrayers.has(p.id);
-      this.ctx.fillStyle = active ? '#7a6a3a' : '#3f382c';
-      this.ctx.fillRect(x, y, 32, 30);
-      bevel(this.ctx, x, y, 32, 30);
-      this.ctx.globalAlpha = unlocked ? 1 : 0.35;
-      this.ctx.fillStyle = '#d8d8e0';
-      this.ctx.beginPath();
-      this.ctx.arc(x + 16, y + 15, 9, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.fillStyle = active ? '#ffd040' : '#5a5a66';
-      this.ctx.fillRect(x + 14, y + 8, 4, 14);
-      this.ctx.fillRect(x + 10, y + 12, 12, 4);
+      const hovered = this.mouseX >= x && this.mouseX < x + 32 && this.mouseY >= y && this.mouseY < y + 29;
+      if (hovered) described = `${p.name} (level ${p.level})`;
+      this.ctx.fillStyle = active ? '#8a7434' : hovered ? '#514833' : '#3f382c';
+      this.ctx.fillRect(x, y, 32, 29);
+      bevel(this.ctx, x, y, 32, 29);
+      const icon = prayerIcon(p.id);
+      this.ctx.globalAlpha = unlocked ? 1 : 0.3;
+      this.ctx.drawImage(icon, x + 16 - icon.width / 2, y + 14 - icon.height / 2);
       this.ctx.globalAlpha = 1;
       const id = p.id;
-      this.region(x, y, 32, 30, {
+      this.region(x, y, 32, 29, {
         tooltip: `${p.name} (level ${p.level}) - ${p.description}`,
-        onClick: () => this.conn.send({ t: 'prayer', id }),
+        onClick: () => {
+          if (!unlocked) {
+            this.pushMessage(`You need a Prayer level of ${p.level} to use ${p.name}.`);
+            return;
+          }
+          this.conn.send({ t: 'prayer', id });
+        },
       });
     }
+    const stripY = PANEL.y + 22 + Math.ceil(PRAYERS.length / cols) * 31 + 2;
+    this.ctx.fillStyle = '#332e24';
+    this.ctx.fillRect(PANEL.x + 4, stripY, PANEL.w - 10, 44);
+    bevel(this.ctx, PANEL.x + 4, stripY, PANEL.w - 10, 44);
+    if (described) {
+      const hoveredPrayer = PRAYERS.find((p) => described!.startsWith(p.name));
+      this.text(described, PANEL.x + PANEL.w / 2, stripY + 13, '#ffb000', { align: 'center', size: 11, bold: true });
+      if (hoveredPrayer) {
+        this.wrapText(hoveredPrayer.description, PANEL.x + 10, stripY + 26, PANEL.w - 22, 10, '#e8e8e8');
+      }
+    } else {
+      this.text('Hover a prayer for details.', PANEL.x + PANEL.w / 2, stripY + 18, '#c8c0a8', { align: 'center', size: 10 });
+      this.text('Recharge at an altar.', PANEL.x + PANEL.w / 2, stripY + 32, '#c8c0a8', { align: 'center', size: 10 });
+    }
+  }
+
+  /** Draws `text` broken onto as many lines as it needs. */
+  private wrapText(text: string, x: number, y: number, maxWidth: number, size: number, colour: string): void {
+    this.ctx.font = `${size}px Helvetica, Arial, sans-serif`;
+    const words = text.split(' ');
+    let line = '';
+    let cy = y;
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (this.ctx.measureText(next).width > maxWidth && line) {
+        this.text(line, x, cy, colour, { size });
+        line = word;
+        cy += size + 2;
+      } else {
+        line = next;
+      }
+    }
+    if (line) this.text(line, x, cy, colour, { size });
   }
 
   private drawMagicTab(): void {
     const s = this.state;
+    const magicLevel = s.levels[Skill.MAGIC];
     this.panelTitle('Spellbook');
     const cols = 5;
+    // OSRS names the hovered spell and lists its runes below the book, so the
+    // player can tell the 34 spells apart without memorising the icons.
+    let described: (typeof SPELLS)[number] | null = null;
     let shown = 0;
     for (const spell of SPELLS) {
       const x = PANEL.x + 6 + (shown % cols) * 36;
-      const y = PANEL.y + 24 + Math.floor(shown / cols) * 30;
+      const y = PANEL.y + 20 + Math.floor(shown / cols) * 27;
       shown++;
-      const usable = s.levels[Skill.MAGIC] >= spell.level;
+      const usable = magicLevel >= spell.level;
       const selected = s.selectedSpell === spell.id;
-      this.ctx.fillStyle = selected ? '#6a5f4a' : '#3f382c';
-      this.ctx.fillRect(x, y, 32, 27);
-      bevel(this.ctx, x, y, 32, 27);
-      this.ctx.globalAlpha = usable ? 1 : 0.32;
-      this.spellIcon(spell.id, x + 16, y + 13);
+      const hovered = this.mouseX >= x && this.mouseX < x + 32 && this.mouseY >= y && this.mouseY < y + 25;
+      if (hovered) described = spell;
+      this.ctx.fillStyle = selected ? '#8a7434' : hovered ? '#514833' : '#3f382c';
+      this.ctx.fillRect(x, y, 32, 25);
+      bevel(this.ctx, x, y, 32, 25);
+      this.ctx.globalAlpha = usable ? 1 : 0.3;
+      this.spellIcon(spell.id, x + 16, y + 12);
       this.ctx.globalAlpha = 1;
       const runeText = spell.runes.map(([r, n]) => `${n} ${itemDef(r)?.name.replace(' rune', '')}`).join(', ');
       const id = spell.id;
-      this.region(x, y, 32, 27, {
+      this.region(x, y, 32, 25, {
         tooltip: `${spell.name} (level ${spell.level}) - ${runeText}`,
         onClick: () => {
           if (!usable) {
@@ -1013,31 +1086,49 @@ export class UI {
             : undefined,
       });
     }
+
+    const stripY = PANEL.y + 20 + Math.ceil(SPELLS.length / cols) * 27 + 2;
+    this.ctx.fillStyle = '#332e24';
+    this.ctx.fillRect(PANEL.x + 4, stripY, PANEL.w - 10, 48);
+    bevel(this.ctx, PANEL.x + 4, stripY, PANEL.w - 10, 48);
+    if (described) {
+      this.text(described.name, PANEL.x + PANEL.w / 2, stripY + 14, '#ffb000', { align: 'center', size: 12, bold: true });
+      const levelColour = magicLevel >= described.level ? '#40ff40' : '#ff4040';
+      this.text(`Level ${described.level}`, PANEL.x + 10, stripY + 27, levelColour, { size: 10 });
+      this.text(`${described.xp} xp`, PANEL.x + PANEL.w - 14, stripY + 27, '#e8e8e8', { size: 10, align: 'right' });
+      // Rune requirements, coloured by whether the player is carrying enough.
+      let rx = PANEL.x + 10;
+      this.ctx.font = '10px Helvetica, Arial, sans-serif';
+      for (const [rune, amount] of described.runes) {
+        const label = `${amount} ${itemDef(rune)?.name.replace(' rune', '') ?? '?'}`;
+        const enough = this.countInventory(rune) >= amount;
+        this.text(label, rx, stripY + 41, enough ? '#40ff40' : '#ff4040', { size: 10 });
+        rx += this.ctx.measureText(`${label}  `).width;
+        this.ctx.font = '10px Helvetica, Arial, sans-serif';
+      }
+    } else {
+      this.text('Hover a spell for its level and runes.', PANEL.x + PANEL.w / 2, stripY + 20, '#c8c0a8', {
+        align: 'center',
+        size: 10,
+      });
+      this.text('Click a combat spell, then click a target.', PANEL.x + PANEL.w / 2, stripY + 34, '#c8c0a8', {
+        align: 'center',
+        size: 10,
+      });
+    }
+  }
+
+  /** How many of `item` the player is carrying. */
+  private countInventory(item: number): number {
+    let total = 0;
+    const inv = this.state.inventory;
+    for (let i = 0; i < inv.items.length; i++) if (inv.items[i] === item) total += inv.amounts[i];
+    return total;
   }
 
   private spellIcon(id: number, x: number, y: number): void {
-    const ctx = this.ctx;
-    const spell = SPELLS[id];
-    const elementColours: Record<string, string> = {
-      air: '#d8e8f0',
-      water: '#4a7fd0',
-      earth: '#8a6a3a',
-      fire: '#d04a20',
-    };
-    let colour = '#a0a0c0';
-    if (spell.element) colour = elementColours[spell.element];
-    else if (spell.kind === SpellKind.TELEPORT) colour = '#60c060';
-    else if (spell.kind === SpellKind.ALCHEMY) colour = '#e8c040';
-    else if (spell.kind === SpellKind.CURSE) colour = '#9a4ac0';
-    else if (spell.kind === SpellKind.ENCHANT) colour = '#c060c0';
-    ctx.fillStyle = colour;
-    ctx.beginPath();
-    ctx.arc(x, y, 9, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.beginPath();
-    ctx.arc(x - 2.5, y - 2.5, 3, 0, Math.PI * 2);
-    ctx.fill();
+    const icon = spellIcon(id);
+    this.ctx.drawImage(icon, Math.round(x - icon.width / 2), Math.round(y - icon.height / 2));
   }
 
   private drawSettingsTab(): void {
@@ -1051,7 +1142,7 @@ export class UI {
       this.region(PANEL.x + 10, y, 168, 26, { onClick });
       y += 32;
     };
-    toggle('Run', this.state.runEnergy > 0, () => this.conn.send({ t: 'toggleRun' }));
+    toggle('Run', this.state.runEnabled, () => this.conn.send({ t: 'toggleRun' }));
     this.text('Camera: arrow keys or middle-drag', PANEL.x + 10, y + 10, '#e8e8e8', { size: 10 });
     this.text('Zoom: mouse wheel', PANEL.x + 10, y + 24, '#e8e8e8', { size: 10 });
     this.text('Type ::help in chat for commands', PANEL.x + 10, y + 38, '#e8e8e8', { size: 10 });
@@ -1302,9 +1393,7 @@ export class UI {
     const h = 300;
     const x = VIEWPORT.x + (VIEWPORT.w - w) / 2;
     const y = VIEWPORT.y + 8;
-    ctx.fillStyle = this.stone;
-    ctx.fillRect(x, y, w, h);
-    bevel(ctx, x, y, w, h);
+    frame(ctx, this.stone, x, y, w, h);
     this.text('The Bank of Gielinor', x + w / 2, y + 18, '#ffb000', { align: 'center', size: 14, bold: true });
     this.closeButton(x + w - 22, y + 4, () => this.conn.send({ t: 'bank', action: 'close' }));
 
@@ -1366,38 +1455,62 @@ export class UI {
     const h = 250;
     const x = VIEWPORT.x + (VIEWPORT.w - w) / 2;
     const y = VIEWPORT.y + 20;
-    ctx.fillStyle = this.stone;
-    ctx.fillRect(x, y, w, h);
-    bevel(ctx, x, y, w, h);
+    frame(ctx, this.stone, x, y, w, h);
     this.text(shop.name, x + w / 2, y + 18, '#ffb000', { align: 'center', size: 14, bold: true });
     this.closeButton(x + w - 22, y + 4, () => this.conn.send({ t: 'shop', action: 'close' }));
 
     const cols = 8;
+    let hovered: { id: number; price: number; amount: number } | null = null;
     for (let i = 0; i < shop.items.length; i++) {
       const entry = shop.items[i];
       const sx = x + 14 + (i % cols) * 48;
       const sy = y + 32 + Math.floor(i / cols) * 42;
-      ctx.fillStyle = '#2e2920';
+      const over = this.mouseX >= sx && this.mouseX < sx + 44 && this.mouseY >= sy && this.mouseY < sy + 38;
+      if (over) hovered = entry;
+      ctx.fillStyle = over ? '#433c2c' : '#2e2920';
       ctx.fillRect(sx, sy, 44, 38);
-      ctx.drawImage(itemIcon(entry.id), sx + 4, sy);
-      this.drawAmount(entry.amount, sx + 2, sy + 9);
-      this.text(`${entry.price}`, sx + 22, sy + 37, '#ffff00', { align: 'center', size: 10 });
+      bevel(ctx, sx, sy, 44, 38);
+      if (entry.amount > 0) {
+        ctx.drawImage(itemIcon(entry.id), sx + 4, sy);
+        this.drawAmount(entry.amount, sx + 2, sy + 9);
+      } else {
+        ctx.globalAlpha = 0.3;
+        ctx.drawImage(itemIcon(entry.id), sx + 4, sy);
+        ctx.globalAlpha = 1;
+      }
+      this.text(`${entry.price}gp`, sx + 22, sy + 37, '#ffff00', { align: 'center', size: 10 });
       const slot = i;
+      const name = itemDef(entry.id)?.name ?? 'Item';
       this.region(sx, sy, 44, 38, {
-        tooltip: `${itemDef(entry.id)?.name} - ${entry.price} coins`,
+        tooltip: `${name} - ${entry.price} coins`,
         onClick: () => this.conn.send({ t: 'shop', action: 'value', slot }),
         menu: () => [
-          { label: `Buy 1 <col=ff9040>${itemDef(entry.id)?.name}`, action: () => this.conn.send({ t: 'shop', action: 'buy', slot, amount: 1 }) },
-          { label: `Buy 5 <col=ff9040>${itemDef(entry.id)?.name}`, action: () => this.conn.send({ t: 'shop', action: 'buy', slot, amount: 5 }) },
-          { label: `Buy 10 <col=ff9040>${itemDef(entry.id)?.name}`, action: () => this.conn.send({ t: 'shop', action: 'buy', slot, amount: 10 }) },
-          { label: `Value <col=ff9040>${itemDef(entry.id)?.name}`, action: () => this.conn.send({ t: 'shop', action: 'value', slot }) },
+          { label: `Value <col=ff9040>${name}`, action: () => this.conn.send({ t: 'shop', action: 'value', slot }) },
+          { label: `Buy 1 <col=ff9040>${name}`, action: () => this.conn.send({ t: 'shop', action: 'buy', slot, amount: 1 }) },
+          { label: `Buy 5 <col=ff9040>${name}`, action: () => this.conn.send({ t: 'shop', action: 'buy', slot, amount: 5 }) },
+          { label: `Buy 10 <col=ff9040>${name}`, action: () => this.conn.send({ t: 'shop', action: 'buy', slot, amount: 10 }) },
+          { label: `Buy 50 <col=ff9040>${name}`, action: () => this.conn.send({ t: 'shop', action: 'buy', slot, amount: 50 }) },
         ],
       });
     }
-    this.text('Right-click an item to buy. Click items in your inventory to sell.', x + w / 2, y + h - 12, '#e8e8e8', {
-      align: 'center',
-      size: 10,
-    });
+
+    // A readout strip, so the price and stock are legible without hunting for
+    // the hover text in the corner of the viewport.
+    const stripY = y + h - 40;
+    ctx.fillStyle = '#332e24';
+    ctx.fillRect(x + 12, stripY, w - 24, 24);
+    bevel(ctx, x + 12, stripY, w - 24, 24);
+    if (hovered) {
+      const name = itemDef(hovered.id)?.name ?? 'Item';
+      this.text(name, x + 20, stripY + 16, '#ffb000', { size: 12, bold: true });
+      this.text(`${hovered.price} coins`, x + w / 2 + 20, stripY + 16, '#ffff00', { size: 11 });
+      this.text(`${hovered.amount} in stock`, x + w - 20, stripY + 16, '#e8e8e8', { size: 11, align: 'right' });
+    } else {
+      this.text('Right-click to buy. Click an inventory item to sell it.', x + w / 2, stripY + 16, '#e8e8e8', {
+        align: 'center',
+        size: 11,
+      });
+    }
     void this.shopAmountMode;
   }
 
@@ -1409,9 +1522,7 @@ export class UI {
     const h = 150;
     const x = VIEWPORT.x + (VIEWPORT.w - w) / 2;
     const y = VIEWPORT.y + VIEWPORT.h - h - 16;
-    ctx.fillStyle = this.stone;
-    ctx.fillRect(x, y, w, h);
-    bevel(ctx, x, y, w, h);
+    frame(ctx, this.stone, x, y, w, h);
     this.text(make.title, x + w / 2, y + 18, '#ffb000', { align: 'center', size: 13, bold: true });
     this.closeButton(x + w - 22, y + 4, () => this.conn.send({ t: 'closeInterface' }));
 
@@ -1851,6 +1962,53 @@ export class UI {
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * The chunky border the real client draws around every full-screen interface:
+ * a black outline, a lit stone edge and a recessed interior.
+ */
+function frame(
+  ctx: CanvasRenderingContext2D,
+  stone: CanvasPattern,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  ctx.fillStyle = '#0b0a08';
+  ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+  ctx.fillStyle = stone;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 1, y + h - 1);
+  ctx.lineTo(x + 1, y + 1);
+  ctx.lineTo(x + w - 1, y + 1);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.moveTo(x + w - 1, y + 1);
+  ctx.lineTo(x + w - 1, y + h - 1);
+  ctx.lineTo(x + 1, y + h - 1);
+  ctx.stroke();
+  // Corner studs.
+  for (const [cx, cy] of [
+    [x + 6, y + 6],
+    [x + w - 6, y + 6],
+    [x + 6, y + h - 6],
+    [x + w - 6, y + h - 6],
+  ]) {
+    ctx.fillStyle = '#3a342a';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#7d7462';
+    ctx.beginPath();
+    ctx.arc(cx - 0.6, cy - 0.6, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
 
 function bevel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
   ctx.strokeStyle = 'rgba(255,255,255,0.14)';

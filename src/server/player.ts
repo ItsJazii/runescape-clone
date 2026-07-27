@@ -11,6 +11,7 @@ import {
 import { INVENTORY_SIZE, BANK_SIZE, MAX_RUN_ENERGY } from '../shared/constants.ts';
 import { EQUIP_SLOT_COUNT, EquipSlot, itemDef, type ItemDef } from '../shared/data/items.ts';
 import { computePrayerMultipliers, PRAYERS, type PrayerMultipliers } from '../shared/data/prayers.ts';
+import { TASKS, taskById } from '../shared/data/tasks.ts';
 import type { ServerMessage } from '../shared/net.ts';
 import { SKILL_COUNT, Skill, clampXp, combatLevelFromArray, levelForXp, startingXp, xpForLevel, SKILL_NAMES } from '../shared/skills.ts';
 import { Container } from './container.ts';
@@ -101,6 +102,9 @@ export class Player extends Entity {
   /** Quest progress, keyed by quest id. 0 = not started. */
   quests: Record<string, number> = {};
 
+  /** Completed "Getting Started" task ids. */
+  tasks = new Set<string>();
+
   hpRegenCounter = 0;
   statRestoreCounter = 0;
   /** Tracks damage dealt for kill credit. */
@@ -169,6 +173,25 @@ export class Player extends Entity {
     this.send({ t: 'prayers', active: [...this.activePrayers] });
   }
 
+  sendTasks(): void {
+    this.send({ t: 'tasks', done: [...this.tasks] });
+  }
+
+  /**
+   * Marks a "Getting Started" task as done the first time the player does it.
+   * Nothing is gated on these; they exist so a new player has a next step.
+   */
+  completeTask(id: string): void {
+    if (this.tasks.has(id)) return;
+    const def = taskById(id);
+    if (!def) return;
+    this.tasks.add(id);
+    this.sendTasks();
+    const remaining = TASKS.length - this.tasks.size;
+    this.message(`<Getting Started> ${def.name} - done!`, 'system');
+    if (remaining === 0) this.message('You have finished every Getting Started task. Gielinor is yours.', 'system');
+  }
+
   sendIgnores(): void {
     this.send({ t: 'ignores', list: [...this.ignores] });
   }
@@ -220,6 +243,8 @@ export class Player extends Entity {
 
   addXp(skill: Skill, amount: number): void {
     if (amount <= 0) return;
+    const task = XP_TASKS[skill];
+    if (task) this.completeTask(task);
     const before = levelForXp(this.xp[skill]);
     this.xp[skill] = clampXp(this.xp[skill] + amount);
     const after = levelForXp(this.xp[skill]);
@@ -384,6 +409,7 @@ export class Player extends Entity {
     this.activePrayers.add(id);
     this.recalculatePrayers();
     this.sendPrayers();
+    this.completeTask('pray');
   }
 
   deactivateAllPrayers(): void {
@@ -417,6 +443,7 @@ export class Player extends Entity {
       autoRetaliate: this.autoRetaliate,
       look: this.look,
       quests: this.quests,
+      tasks: [...this.tasks],
       friends: this.friends,
       ignores: this.ignores,
       inventory: this.inventory.toArrays(),
@@ -440,6 +467,7 @@ export class Player extends Entity {
     this.autoRetaliate = data.autoRetaliate ?? true;
     if (Array.isArray(data.look)) this.look = data.look;
     if (data.quests && typeof data.quests === 'object') this.quests = data.quests;
+    if (Array.isArray(data.tasks)) this.tasks = new Set(data.tasks.filter((t: unknown) => typeof t === 'string'));
     if (Array.isArray(data.friends)) this.friends = data.friends.filter((n: unknown) => typeof n === 'string');
     if (Array.isArray(data.ignores)) this.ignores = data.ignores.filter((n: unknown) => typeof n === 'string');
     if (data.inventory) this.inventory.load(data.inventory.items, data.inventory.amounts);
@@ -457,6 +485,17 @@ export function sameName(a: string, b: string): boolean {
 export function normaliseName(name: string): string {
   return name.trim().toLowerCase().replace(/_/g, ' ');
 }
+
+/** Earning xp in these skills ticks off the matching Getting Started task. */
+const XP_TASKS: Partial<Record<Skill, string>> = {
+  [Skill.WOODCUTTING]: 'chop',
+  [Skill.FIREMAKING]: 'fire',
+  [Skill.FISHING]: 'fish',
+  [Skill.COOKING]: 'cook',
+  [Skill.MINING]: 'mine',
+  [Skill.SMITHING]: 'smith',
+  [Skill.MAGIC]: 'spell',
+};
 
 function conflicts(a: string, b: string): boolean {
   if (a === b) return true;
