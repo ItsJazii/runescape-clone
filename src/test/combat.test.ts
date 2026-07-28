@@ -15,6 +15,10 @@ import {
   rollDamage,
   styleBonusFor,
 } from '../shared/combat.ts';
+import '../shared/data/all.ts';
+import { applyDamage } from '../server/combat.ts';
+import { Player } from '../server/player.ts';
+import { World } from '../server/world.ts';
 
 describe('bonuses', () => {
   it('starts at zero across the board', () => {
@@ -186,5 +190,75 @@ describe('rollDamage', () => {
 
   it('can roll a zero, which the game shows as a block', () => {
     assert.equal(rollDamage(5, () => 0.01), 0);
+  });
+});
+
+/** Runs the world's queued-hit pass, which is private to the tick loop. */
+function drainHitQueue(world: World): void {
+  (world as unknown as { processQueuedHits(): void }).processQueuedHits();
+}
+
+describe('flinching when hit', () => {
+  const setup = () => {
+    const world = new World();
+    world.tick = 100;
+    const target = new Player('Target');
+    const attacker = new Player('Attacker');
+    return { world, target, attacker };
+  };
+
+  it('plays the block animation on whoever took the hit', () => {
+    const { world, target, attacker } = setup();
+    applyDamage(world, attacker, target, 3);
+    assert.equal(target.animation, 'block');
+    assert.equal(target.animationTick, world.tick);
+  });
+
+  it('flinches even when the hit does no damage', () => {
+    // A zero is still a hit landing, and the real client reacts to it.
+    const { world, target, attacker } = setup();
+    applyDamage(world, attacker, target, 0);
+    assert.equal(target.animation, 'block');
+    assert.equal(target.hitpoints, target.maxHitpoints);
+  });
+
+  it('does not interrupt the target\u2019s own attack on the same tick', () => {
+    const { world, target, attacker } = setup();
+    target.playAnimation('slash', world.tick);
+    applyDamage(world, attacker, target, 3);
+    assert.equal(target.animation, 'slash', 'the attack animation should win');
+  });
+
+  it('does flinch once the target\u2019s own animation is over', () => {
+    const { world, target, attacker } = setup();
+    target.playAnimation('slash', world.tick - 1);
+    applyDamage(world, attacker, target, 3);
+    assert.equal(target.animation, 'block');
+  });
+
+  it('leaves a teleport alone', () => {
+    const { world, target, attacker } = setup();
+    target.playAnimation('teleport', world.tick - 1);
+    applyDamage(world, attacker, target, 3);
+    assert.equal(target.animation, 'teleport');
+  });
+
+  it('plays death rather than a flinch on a killing blow', () => {
+    const { world, target, attacker } = setup();
+    applyDamage(world, attacker, target, target.hitpoints);
+    assert.equal(target.hitpoints, 0);
+    assert.equal(target.dead, true);
+    assert.equal(target.animation, 'death');
+  });
+
+  it('reacts through the delayed hit queue used by bows and spells', () => {
+    const { world, target, attacker } = setup();
+    // Ranged and magic land their damage a few ticks after the animation.
+    applyDamage(world, attacker, target, 4, 2);
+    assert.equal(target.animation, 'idle', 'nothing should happen until the shot arrives');
+    world.tick += 2;
+    drainHitQueue(world);
+    assert.equal(target.animation, 'block');
+    assert.equal(target.hitpoints, target.maxHitpoints - 4);
   });
 });

@@ -5,7 +5,7 @@ import { npcDef } from '../shared/data/npcs.ts';
 import { objectDef } from '../shared/data/objects.ts';
 import { SKILL_NAMES } from '../shared/skills.ts';
 import { actorMesh, MAX_BONES, type ActorLook } from './gl/actormodels.ts';
-import { ANIM_DURATION, buildBoneMatrices, poseFor } from './gl/animation.ts';
+import { ANIM_DURATION, buildBoneMatrices, isQuadruped, poseFor } from './gl/animation.ts';
 import { MeshBuilder } from './gl/mesh.ts';
 import { objectMesh } from './gl/objectmodels.ts';
 import { Renderer, type CameraState, type GpuMesh } from './gl/renderer.ts';
@@ -625,9 +625,8 @@ function drawWorld(self: EntityView, now: number): void {
     const mesh = actorGpuMesh(key, look);
     if (!mesh) continue;
     const def = view.defId !== undefined ? npcDef(view.defId) : undefined;
-    const quadruped = !!def && ['cow', 'rat', 'spider', 'scorpion', 'bear', 'unicorn', 'chicken'].includes(def.model);
     const anim = animationFor(view, now);
-    const pose = poseFor(anim.name, anim.t, view.walkCycle, quadruped);
+    const pose = poseFor(anim.name, anim.t, view.walkCycle, isQuadruped(def?.model));
     const groundY = scene.heightAt(view.renderX + 0.5, view.renderY + 0.5, plane);
     buildBoneMatrices(
       boneMatrices,
@@ -818,6 +817,10 @@ Object.defineProperty(window, 'game', {
     get inventory() {
       return state.inventory.items.map((id, i) => (id === null || id < 0 ? null : { id, name: itemDef(id)?.name, amount: state.inventory.amounts[i] }));
     },
+    /** Worn equipment by slot, using RuneScape's slot numbering. */
+    get equipment() {
+      return state.equipment.items.map((id, i) => (id === null || id < 0 ? null : { id, name: itemDef(id)?.name, amount: state.equipment.amounts[i] }));
+    },
     get chat() {
       return state.chat.map((l) => l.text);
     },
@@ -838,6 +841,7 @@ Object.defineProperty(window, 'game', {
         y: Math.round(n.renderY),
         hp: n.hp,
         maxHp: n.maxHp,
+        anim: n.anim,
       }));
     },
     get groundItems() {
