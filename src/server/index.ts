@@ -636,6 +636,7 @@ function handleShop(player: Player, msg: Extract<ClientMessage, { t: 'shop' }>):
     player.inventory.add(entry.item, amount);
     entry.amount -= amount;
     player.sendInventory();
+    player.send({ t: 'sound', name: 'coins' });
     sendShop(player, key);
     return;
   }
@@ -660,6 +661,7 @@ function handleShop(player: Player, msg: Extract<ClientMessage, { t: 'shop' }>):
     if (entry) entry.amount += amount;
     else stock.push({ item: stack.id, amount });
     player.sendInventory();
+    player.send({ t: 'sound', name: 'coins' });
     sendShop(player, key);
   }
 }

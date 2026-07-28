@@ -19,7 +19,15 @@ const url = process.argv[2] ?? 'http://localhost:43594/';
 const name = process.argv[3] ?? 'Tester';
 
 const browser = await chromium.launch({
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-gpu-sandbox'],
+  args: [
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--disable-gpu-sandbox',
+    // Let the AudioContext actually run, but keep the test machine silent.
+    '--autoplay-policy=no-user-gesture-required',
+    '--mute-audio',
+  ],
 });
 // 2x the 765x503 layout, so screenshot coords are exactly game coords x 2.
 const page = await browser.newPage({ viewport: { width: 1530, height: 1006 } });
@@ -189,6 +197,9 @@ heading('all interface tabs render');
 // Tab strip: tabW = 33, startX = 524, top row y=168+18, bottom row y=466+18.
 const TAB_X = (i) => 524 + (i % 7) * 33 + 16;
 const TAB_Y = (i) => (i < 7 ? 186 : 484);
+// PANEL from src/client/ui/ui.ts, in game coords.
+const PANEL_X = 548;
+const PANEL_Y = 205;
 const TAB_NAMES = [
   'Combat Options', 'Skills', 'Getting Started', 'Inventory', 'Worn Equipment', 'Prayer', 'Magic',
   'Chat Channel', 'Friends List', 'Ignore List', 'Logout', 'Options', 'Emotes', 'Music Player',
@@ -253,16 +264,23 @@ if (keeper) {
     await wait(500);
   }
 
-  // Talking is the other half of an NPC interaction.
-  const keeper2 = await g(() => window.game.npcScreenPos('Shop keeper'));
-  if (keeper2) {
+  // Talking is the other half of an NPC interaction. Shop keepers wander, so
+  // re-locate and retry rather than trusting one screen position - a single
+  // click that lands where the keeper *was* looks exactly like broken picking.
+  let talking = false;
+  for (let attempt = 0; attempt < 4 && !talking; attempt++) {
+    const keeper2 = await g(() => window.game.npcScreenPos('Shop keeper'));
+    if (!keeper2) {
+      await wait(700);
+      continue;
+    }
     await click(keeper2.x, keeper2.y);
-    const talking = await until(() => window.game.dialogue !== null, 15);
-    check('left-clicking an NPC starts a conversation', talking, JSON.stringify(await g(() => window.game.dialogue)));
-    await shot('c14b-dialogue');
-    await page.keyboard.press('Escape');
-    await wait(500);
+    talking = await until(() => window.game.dialogue !== null, 6);
   }
+  check('left-clicking an NPC starts a conversation', talking, JSON.stringify(await g(() => window.game.dialogue)));
+  await shot('c14b-dialogue');
+  await page.keyboard.press('Escape');
+  await wait(500);
 }
 
 /* ---------------------------------------------------------------- */
@@ -291,6 +309,72 @@ check('the task list tracks progress', Array.isArray(doneTasks) && doneTasks.len
 for (const id of ['talk', 'chop', 'equip', 'kill', 'shop', 'bank']) {
   check(`task "${id}" was ticked off by playing`, doneTasks.includes(id), JSON.stringify(doneTasks));
 }
+
+/* ---------------------------------------------------------------- */
+// Audio cannot be listened to from a test, so assert on the engine's state
+// instead: that the context actually started, that a track is scheduled, and
+// that walking into a different area swaps the track.
+heading('audio');
+const audio0 = await g(() => window.game.audio);
+check('the audio engine started', audio0.ready, JSON.stringify(audio0));
+check('music is enabled by default', audio0.musicEnabled && audio0.sfxEnabled, JSON.stringify(audio0));
+check('a track is playing', typeof audio0.playing === 'string' && audio0.playing.length > 0, JSON.stringify(audio0));
+check('the track follows the area, not a manual pick', audio0.pinned === false, JSON.stringify(audio0));
+
+// Lumbridge -> Al Kharid should change both the area and the music.
+await chat('::tele 3221 3218 0');
+await wait(2000);
+const inLumbridge = await g(() => window.game.audio);
+check('Lumbridge is detected as an area', inLumbridge.area === 'Lumbridge', JSON.stringify(inLumbridge));
+await chat('::tele 3290 3180 0');
+await wait(2000);
+const inKharid = await g(() => window.game.audio);
+check('crossing into Al Kharid changes the area', inKharid.area === 'Al Kharid', JSON.stringify(inKharid));
+check(
+  'the music changes with the area',
+  inKharid.playing !== inLumbridge.playing,
+  `${inLumbridge.playing} -> ${inKharid.playing}`,
+);
+const unlocked = await g(() => window.game.chat);
+check(
+  'entering a new area unlocks its track',
+  unlocked.some((l) => l.includes('unlocked a new music track')),
+  JSON.stringify(unlocked.slice(-4)),
+);
+
+// The music player tab: pick a track by hand and check it pins.
+await click(TAB_X(13), TAB_Y(13));
+await wait(400);
+await shot('c17-music');
+await click(PANEL_X + 40, PANEL_Y + 32);
+await wait(600);
+const picked = await g(() => window.game.audio);
+check('clicking a track plays it and pins it', picked.pinned === true, JSON.stringify(picked));
+check('the picked track is playing', typeof picked.playing === 'string', JSON.stringify(picked));
+
+// Options: mute music and confirm the engine reports it.
+await click(TAB_X(11), TAB_Y(11));
+await wait(400);
+await shot('c18-options');
+const beforeMute = await g(() => window.game.audio);
+// Options rows: Run at PANEL.y+36, then Music 32px below it.
+await click(PANEL_X + 94, PANEL_Y + 80);
+await wait(400);
+const muted = await g(() => window.game.audio);
+check('the Music toggle switches music off', muted.musicEnabled === !beforeMute.musicEnabled, JSON.stringify(muted));
+check('switching music off stops the track', muted.playing === null, JSON.stringify(muted));
+await click(PANEL_X + 94, PANEL_Y + 80);
+await wait(1200);
+const unmuted = await g(() => window.game.audio);
+check('the Music toggle switches back on', unmuted.musicEnabled === beforeMute.musicEnabled, JSON.stringify(unmuted));
+// Regression: re-enabling only restored the volume, and the area track was
+// restarted solely on an area change, so the game stayed silent while the
+// toggle read "On" until the player wandered into somewhere new.
+check(
+  'switching music back on resumes a track without leaving the area',
+  typeof unmuted.playing === 'string' && unmuted.playing.length > 0,
+  JSON.stringify(unmuted),
+);
 
 /* ---------------------------------------------------------------- */
 console.log('\n=======================================================');

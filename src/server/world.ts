@@ -488,7 +488,7 @@ export class World {
 
       this.processPending(player);
       if (player.action && !player.pending && player.path.length === 0) {
-        if (!player.action.tick(player)) player.stopAction();
+        if (!player.action.tick(player, this.tick)) player.stopAction();
       }
     }
   }

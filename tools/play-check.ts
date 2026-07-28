@@ -53,6 +53,8 @@ class Client {
   hitsplats: number[] = [];
   projectiles: string[] = [];
   sounds: string[] = [];
+  /** Distinct animation states seen for our player, as "name@startTick". */
+  animStates: string[] = [];
 
   connect(name: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -73,7 +75,11 @@ class Client {
 
   private handle(m: ServerMessage): void {
     switch (m.t) {
-      case 'sync':
+      case 'sync': {
+        // The client replays an animation when its start tick changes, so
+        // record the pair rather than just the name.
+        const anim = `${m.self.a}@${m.self.at}`;
+        if (this.animStates[this.animStates.length - 1] !== anim) this.animStates.push(anim);
         this.tick = m.tick;
         this.self = m.self;
         this.npcs = m.npcs;
@@ -84,6 +90,7 @@ class Client {
         for (const h of m.self.hits ?? []) this.hitsplats.push(h.dmg);
         for (const p of m.projectiles) this.projectiles.push(p.gfx);
         break;
+      }
       case 'stats':
         this.levels = m.levels;
         this.xp = m.xp;
@@ -159,6 +166,7 @@ class Client {
     this.hitsplats.length = 0;
     this.projectiles.length = 0;
     this.sounds.length = 0;
+    this.animStates.length = 0;
   }
 
   said(fragment: string): boolean {
@@ -386,6 +394,23 @@ if (furnace) {
     const madeBar = await until(() => c.count(2349) > 0, 25);
     check('smelting produces a bronze bar', madeBar, `bars=${c.count(2349)} ${c.log.slice(-3).join(' | ')}`);
     check('smithing xp is awarded', c.xpDrops.some((d) => d.skill === Skill.SMITHING), JSON.stringify(c.xpDrops));
+    // Smelting used to stamp its animation with a constant tick of 0, which
+    // the client reads as "started thousands of ticks ago" and renders as
+    // idle - so the player stood still and the sound fired once per action
+    // rather than once per bar.
+    await until(() => c.count(2349) > 1, 15);
+    const smithAnims = c.animStates.filter((s) => s.startsWith('smith@'));
+    check('smelting plays the smithing animation', smithAnims.length > 0, JSON.stringify(c.animStates.slice(-8)));
+    check(
+      'the animation is stamped with the real tick, not 0',
+      !smithAnims.includes('smith@0'),
+      JSON.stringify(smithAnims),
+    );
+    check(
+      'each bar restarts the animation',
+      new Set(smithAnims).size >= 2,
+      JSON.stringify(c.animStates.slice(-8)),
+    );
   }
 }
 

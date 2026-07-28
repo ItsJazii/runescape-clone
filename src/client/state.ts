@@ -18,6 +18,29 @@ export interface HitsplatView {
   at: number;
 }
 
+/**
+ * Sound effect played when the local player starts one of these animations.
+ * Names match the ones the server passes to `playAnimation`; anything absent
+ * (idle, walk, run, block) is deliberately silent.
+ */
+const ANIMATION_SOUNDS: Record<string, string> = {
+  chop: 'chop',
+  mine: 'mine',
+  fishnet: 'fishnet',
+  fishrod: 'fishrod',
+  firemaking: 'firemaking',
+  cook: 'cook',
+  smith: 'smith',
+  craft: 'craft',
+  eat: 'eat',
+  bury: 'bury',
+  pickup: 'pickup',
+  pray: 'pray',
+  teleport: 'teleport',
+  cast: 'cast',
+  death: 'death',
+};
+
 export interface EntityView {
   id: number;
   kind: 'player' | 'npc';
@@ -138,6 +161,14 @@ export class GameState {
   selectedSlot = -1;
   selectedSpell: number | null = null;
 
+  /**
+   * Sound effects the last packet asked for, drained once per frame by
+   * main.ts. Queueing names here keeps the audio engine out of the state
+   * layer, and means an effect fires exactly when the event arrives rather
+   * than being re-derived from whatever the renderer notices later.
+   */
+  readonly soundQueue: string[] = [];
+
   handle(msg: ServerMessage, now: number): void {
     switch (msg.t) {
       case 'init':
@@ -230,6 +261,11 @@ export class GameState {
 
       case 'levelup':
         this.levelUp = { skill: msg.skill, level: msg.level, at: now };
+        this.soundQueue.push('levelup');
+        break;
+
+      case 'sound':
+        this.soundQueue.push(msg.name);
         break;
 
       case 'prayers':
@@ -334,10 +370,18 @@ export class GameState {
     if (data.a !== view.anim || data.at !== view.animStart) {
       view.anim = data.a;
       view.animStart = data.at;
+      // Skilling repeats its animation once per swing, so the animation start
+      // tick changing is the cleanest signal that another swing landed.
+      if (data.i === this.index && kind === 'player') {
+        const sound = ANIMATION_SOUNDS[data.a];
+        if (sound) this.soundQueue.push(sound);
+      }
     }
     if (data.hits?.length) {
       for (const hit of data.hits) view.hits.push({ dmg: hit.dmg, type: hit.type, at: now });
       view.hpShownUntil = now + 8000;
+      // Everything in a sync packet is near the player, so any hit is audible.
+      for (const hit of data.hits) this.soundQueue.push(hit.dmg > 0 ? 'hit' : 'block');
     }
     if (data.msg) {
       view.msg = data.msg;
