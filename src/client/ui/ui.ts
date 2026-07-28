@@ -4,6 +4,8 @@ import { PRAYERS } from '../../shared/data/prayers.ts';
 import { SPELLS, SpellKind } from '../../shared/data/spells.ts';
 import { TASKS } from '../../shared/data/tasks.ts';
 import { SKILL_NAMES, SKILL_COUNT, Skill, levelForXp, xpForLevel } from '../../shared/skills.ts';
+import type { AudioEngine } from '../audio/engine.ts';
+import { STARTING_TRACKS, TRACK_NAMES, track, trackExists } from '../audio/tracks.ts';
 import type { Connection } from '../net.ts';
 import type { GameState } from '../state.ts';
 import { itemIcon } from './icons.ts';
@@ -70,17 +72,8 @@ const CHAT_COLOURS: Record<string, string> = {
   game: '#000000',
 };
 
-/** Track list for the music player, in the order Lumbridge unlocks them. */
-const MUSIC_TRACKS = [
-  'Adventure',
-  'Autumn Voyage',
-  'Book of Spells',
-  'Harmony',
-  'Lumbridge Arpeggio',
-  'Newbie Melody',
-  'Sea Shanty 2',
-  'Yesteryear',
-];
+/** Steps the volume buttons move through, so both ends are reachable. */
+const VOLUME_STEP = 0.1;
 
 export class UI {
   readonly ctx: CanvasRenderingContext2D;
@@ -117,12 +110,19 @@ export class UI {
   private prompt: { title: string; value: string; onSubmit: (name: string) => void } | null = null;
   /** While set, typed chat is sent as a private message to this player. */
   private pmTarget: string | null = null;
-  private musicTrack = -1;
+  /** Tracks heard at least once; the rest are listed but greyed out. */
+  private readonly unlockedTracks = new Set<string>(STARTING_TRACKS);
+  /**
+   * True once a track has been chosen by hand, which stops the area from
+   * overriding it until "Auto" is pressed again.
+   */
+  musicPinned = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly state: GameState,
     private readonly conn: Connection,
+    private readonly audio: AudioEngine,
   ) {
     this.ctx = canvas.getContext('2d')!;
     this.buildTextures();
@@ -1143,9 +1143,33 @@ export class UI {
       y += 32;
     };
     toggle('Run', this.state.runEnabled, () => this.conn.send({ t: 'toggleRun' }));
-    this.text('Camera: arrow keys or middle-drag', PANEL.x + 10, y + 10, '#e8e8e8', { size: 10 });
-    this.text('Zoom: mouse wheel', PANEL.x + 10, y + 24, '#e8e8e8', { size: 10 });
-    this.text('Type ::help in chat for commands', PANEL.x + 10, y + 38, '#e8e8e8', { size: 10 });
+    toggle('Music', this.audio.musicEnabled, () => {
+      this.audio.setMusicEnabled(!this.audio.musicEnabled);
+      // Coming back on should resume with the area's track, not silence.
+      if (this.audio.musicEnabled) this.musicPinned = false;
+    });
+    toggle('Sound effects', this.audio.sfxEnabled, () => this.audio.setSfxEnabled(!this.audio.sfxEnabled));
+
+    // Volume rows: label, level as tenths, and a pair of nudge buttons.
+    const volume = (label: string, value: number, onChange: (v: number) => void) => {
+      this.text(`${label}: ${Math.round(value * 10)}`, PANEL.x + 10, y + 12, '#ffb000', { size: 11 });
+      const button = (bx: number, text: string, delta: number) => {
+        this.ctx.fillStyle = '#3f382c';
+        this.ctx.fillRect(bx, y, 24, 20);
+        bevel(this.ctx, bx, y, 24, 20);
+        this.text(text, bx + 12, y + 14, '#ffb000', { align: 'center', size: 12 });
+        this.region(bx, y, 24, 20, { onClick: () => onChange(value + delta) });
+      };
+      button(PANEL.x + 124, '-', -VOLUME_STEP);
+      button(PANEL.x + 152, '+', VOLUME_STEP);
+      y += 26;
+    };
+    volume('Music volume', this.audio.musicVolume, (v) => this.audio.setMusicVolume(v));
+    volume('Effects volume', this.audio.sfxVolume, (v) => this.audio.setSfxVolume(v));
+
+    this.text('Camera: arrow keys or middle-drag', PANEL.x + 10, y + 8, '#e8e8e8', { size: 10 });
+    this.text('Zoom: mouse wheel', PANEL.x + 10, y + 20, '#e8e8e8', { size: 10 });
+    this.text('Type ::help in chat for commands', PANEL.x + 10, y + 32, '#e8e8e8', { size: 10 });
   }
 
   private drawEmotesTab(): void {
@@ -1274,34 +1298,75 @@ export class UI {
     this.text('players directly.', PANEL.x + PANEL.w / 2, PANEL.y + 102, '#e8e8e8', { align: 'center', size: 10 });
   }
 
+  /** Marks a track as heard, so the music player lists it as available. */
+  unlockTrack(name: string): void {
+    if (!trackExists(name) || this.unlockedTracks.has(name)) return;
+    this.unlockedTracks.add(name);
+    // The chatbox colours lines by kind and prints the text verbatim, so a
+    // <col=...> tag here would show up literally.
+    this.pushMessage(`You have unlocked a new music track: ${name}.`);
+  }
+
   private drawMusicTab(): void {
     this.panelTitle('Music Player');
     const rowH = 14;
-    const visible = Math.floor((PANEL.h - 60) / rowH);
-    for (let i = 0; i < Math.min(MUSIC_TRACKS.length, visible); i++) {
-      const track = MUSIC_TRACKS[i];
+    // Leave room for the Auto/Stop buttons and the now-playing strip.
+    const visible = Math.floor((PANEL.h - 74) / rowH);
+    for (let i = 0; i < Math.min(TRACK_NAMES.length, visible); i++) {
+      const name = TRACK_NAMES[i];
       const y = PANEL.y + 32 + i * rowH;
-      const playing = this.musicTrack === i;
+      const unlocked = this.unlockedTracks.has(name);
+      const playing = this.audio.playing === name;
       if (playing) {
         this.ctx.fillStyle = 'rgba(255,176,0,0.16)';
         this.ctx.fillRect(PANEL.x + 6, y - 10, PANEL.w - 12, rowH);
       }
-      // Green marks an unlocked track; the one playing is highlighted amber.
-      this.text(track, PANEL.x + 10, y, playing ? '#ffb000' : '#40ff40', { size: 11 });
-      const index = i;
+      // Amber for the track playing, green for unlocked, grey for unheard.
+      const colour = playing ? '#ffb000' : unlocked ? '#40ff40' : '#7a7368';
+      this.text(name, PANEL.x + 10, y, colour, { size: 11 });
       this.region(PANEL.x + 6, y - 10, PANEL.w - 12, rowH, {
-        tooltip: track,
-        onClick: () => {
-          this.musicTrack = index;
-          this.pushMessage(`Now playing: ${MUSIC_TRACKS[index]}`);
-        },
+        tooltip: unlocked ? name : `${name} (not yet unlocked)`,
+        onClick: () => this.selectTrack(name, unlocked),
       });
     }
-    const label = this.musicTrack >= 0 ? MUSIC_TRACKS[this.musicTrack] : 'Nothing';
-    this.text(`Now playing: ${label}`, PANEL.x + PANEL.w / 2, PANEL.y + PANEL.h - 10, '#ffb000', {
+
+    this.listButtons([
+      ['Auto', () => this.followArea()],
+      [this.audio.playing ? 'Stop' : 'Muted', () => this.stopTrack()],
+    ]);
+    const label = this.audio.playing ?? 'Nothing';
+    const suffix = this.musicPinned ? '' : ' (auto)';
+    this.text(`Playing: ${label}${suffix}`, PANEL.x + PANEL.w / 2, PANEL.y + PANEL.h - 34, '#ffb000', {
       align: 'center',
       size: 10,
     });
+  }
+
+  private selectTrack(name: string, unlocked: boolean): void {
+    if (!unlocked) {
+      this.pushMessage('You have not unlocked that track yet. Explore to find it.');
+      return;
+    }
+    if (!this.audio.musicEnabled) {
+      this.pushMessage('Music is switched off in the Options tab.');
+      return;
+    }
+    const compiled = track(name);
+    if (!compiled) return;
+    this.musicPinned = true;
+    this.audio.playTrack(name, compiled);
+    this.pushMessage(`Now playing: ${name}`);
+  }
+
+  /** Hands control back to the area, taking effect at the next area change. */
+  private followArea(): void {
+    this.musicPinned = false;
+    this.pushMessage('Music will follow the area you are in.');
+  }
+
+  private stopTrack(): void {
+    this.musicPinned = true;
+    this.audio.stopTrack();
   }
 
   /* --------------------------- name prompts ----------------------- */

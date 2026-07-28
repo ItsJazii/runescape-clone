@@ -181,6 +181,12 @@ crops.
 - **Getting Started** — a 16-entry checklist (talk, explore, chop, light, fish,
   cook, mine, smelt, equip, fight, loot, eat, shop, bank, cast, pray) that ticks
   itself off as you play. Informational only; nothing is gated behind it.
+- **Audio** — 10 music tracks and around 20 sound effects, all synthesised in
+  the browser from oscillators and filtered noise rather than loaded from files.
+  Music follows the area you are standing in and unlocks tracks in the music
+  player as you find them; the Options tab has mute toggles and volume for
+  music and effects separately. Effects cover combat, every skilling action,
+  level-ups, eating, prayer, spells, teleports, doors and shop transactions.
 - **Social** — friends list with online state, ignore list, private messaging.
 - **Ground items** — private to the owner for 100 ticks, public for another 200,
   then gone.

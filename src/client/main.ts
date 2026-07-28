@@ -14,6 +14,8 @@ import { Connection } from './net.ts';
 import { GameState, type EntityView } from './state.ts';
 import { SCREEN_H, SCREEN_W, UI, VIEWPORT, type MenuEntry } from './ui/ui.ts';
 import { itemIcon } from './ui/icons.ts';
+import { AudioEngine } from './audio/engine.ts';
+import { areaAt, AREA_TRACKS, DEFAULT_TRACK, track } from './audio/tracks.ts';
 
 /* ------------------------------------------------------------------ */
 /* Bootstrap                                                           */
@@ -29,7 +31,8 @@ const errorLabel = document.getElementById('err') as HTMLDivElement;
 
 const state = new GameState();
 const conn = new Connection(state);
-const ui = new UI(uiCanvas, state, conn);
+const audio = new AudioEngine();
+const ui = new UI(uiCanvas, state, conn, audio);
 let renderer: Renderer;
 let scene: WorldScene;
 let started = false;
@@ -76,6 +79,8 @@ function startGame(): void {
   const name = nameInput.value.trim() || `Player${Math.floor(Math.random() * 900 + 100)}`;
   errorLabel.textContent = 'Loading world...';
   started = true;
+  // Clicking Play is the user gesture browsers demand before audio may start.
+  audio.start();
   setTimeout(() => {
     try {
       renderer = new Renderer(worldCanvas);
@@ -517,6 +522,8 @@ function animationFor(view: EntityView, now: number): { name: string; t: number 
 
 let lastFrame = performance.now();
 const overlayQueue: (() => void)[] = [];
+/** Named area the player was in last frame, so entering one is detectable. */
+let currentArea: string | null | undefined;
 
 function frame(now: number): void {
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
@@ -531,6 +538,7 @@ function frame(now: number): void {
 
   state.interpolate(now, dt);
   scene.applyOverrides(state.objectOverrides);
+  updateAudio();
 
   const self = state.self;
   if (self) {
@@ -570,6 +578,32 @@ function frame(now: number): void {
     drawXpDrops(now);
     ctx.restore();
   }
+}
+
+/**
+ * Drains queued sound effects, keeps the music matched to the area the player
+ * is standing in, and pumps the note scheduler. The UI owns manual track
+ * selection, so an area only takes over once the player crosses into a new one
+ * - picking a track by hand is not undone by standing still.
+ */
+function updateAudio(): void {
+  for (const name of state.soundQueue) audio.sfx(name);
+  state.soundQueue.length = 0;
+
+  const self = state.self;
+  if (self) {
+    const area = areaAt(scene.map.areas, Math.round(self.renderX), Math.round(self.renderY));
+    if (area !== currentArea) {
+      currentArea = area;
+      const name = (area && AREA_TRACKS[area]) || DEFAULT_TRACK;
+      ui.unlockTrack(name);
+      if (!ui.musicPinned) {
+        const compiled = track(name);
+        if (compiled) audio.playTrack(name, compiled);
+      }
+    }
+  }
+  audio.update();
 }
 
 function drawWorld(self: EntityView, now: number): void {
@@ -852,6 +886,19 @@ Object.defineProperty(window, 'game', {
     },
     get interface() {
       return state.openInterface;
+    },
+    /** Audio state, so a headless run can assert the engine is actually live. */
+    get audio() {
+      return {
+        ready: audio.ready,
+        playing: audio.playing,
+        area: currentArea ?? null,
+        pinned: ui.musicPinned,
+        musicEnabled: audio.musicEnabled,
+        sfxEnabled: audio.sfxEnabled,
+        musicVolume: audio.musicVolume,
+        sfxVolume: audio.sfxVolume,
+      };
     },
     get dialogue() {
       return state.dialogue ? { lines: state.dialogue.lines, options: state.dialogue.options } : null;
