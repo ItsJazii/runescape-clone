@@ -102,12 +102,13 @@ export function performPlayerAttack(world: World, player: Player, target: Entity
   const style = player.style;
   const type = style.type;
   player.face(target.x, target.y);
-  player.playAnimation(style.anim, world.tick);
 
   if (type === AttackType.RANGED) {
+    // The animation is played inside, once the shot is known to go off.
     performRangedAttack(world, player, target);
     return;
   }
+  player.playAnimation(style.anim, world.tick);
 
   const styleBonus = styleBonusFor(style.style);
   const effAtt = effectiveLevel(player.levels[Skill.ATTACK], player.prayerMultipliers.attack, styleBonus.attack);
@@ -136,6 +137,7 @@ function performRangedAttack(world: World, player: Player, target: Entity): void
     player.target = null;
     return;
   }
+  player.playAnimation(player.style.anim, world.tick);
 
   const styleBonus = styleBonusFor(player.style.style);
   const effRange = effectiveLevel(player.levels[Skill.RANGED], player.prayerMultipliers.ranged, styleBonus.ranged);
@@ -297,6 +299,21 @@ export function performNpcAttack(world: World, npc: Npc, target: Entity): void {
 /* Damage application                                                  */
 /* ------------------------------------------------------------------ */
 
+/** Animations a flinch must never cut short. */
+const UNINTERRUPTIBLE = new Set(['death', 'teleport']);
+
+/**
+ * Plays the block animation on whoever just took a hit, so that being struck
+ * is visible even when the hit does no damage. An animation started on this
+ * same tick is the entity's own attack, which takes priority.
+ */
+function playFlinch(world: World, target: Entity): void {
+  if (target.dead || target.hitpoints <= 0) return;
+  if (target.animationTick === world.tick) return;
+  if (UNINTERRUPTIBLE.has(target.animation)) return;
+  target.playAnimation('block', world.tick);
+}
+
 export function applyDamage(world: World, source: Entity | null, target: Entity, damage: number, delay = 0): void {
   if (delay > 0) {
     world.queueHit(target, source, damage, delay, damage > 0 ? 1 : 0);
@@ -333,5 +350,7 @@ export function applyDamage(world: World, source: Entity | null, target: Entity,
 
   if (target.hitpoints <= 0 && !target.dead) {
     world.killEntity(target, source);
+    return;
   }
+  playFlinch(world, target);
 }

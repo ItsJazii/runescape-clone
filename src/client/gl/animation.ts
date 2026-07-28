@@ -46,6 +46,17 @@ export const ANIM_DURATION: Record<string, number> = {
 const EMPTY: Pose = [];
 
 /**
+ * Models built on four legs rather than a torso with arms. Their ARM_L/ARM_R
+ * bones are reused for hind legs and pincers, so arm-driven poses must never
+ * be applied to them.
+ */
+const QUADRUPED_MODELS = new Set(['cow', 'rat', 'spider', 'scorpion', 'bear', 'unicorn', 'chicken']);
+
+export function isQuadruped(model: string | undefined): boolean {
+  return !!model && QUADRUPED_MODELS.has(model);
+}
+
+/**
  * @param anim      animation name
  * @param t         progress, 0..1 for one-shot animations
  * @param cycle     continuous phase used by looping animations
@@ -90,6 +101,17 @@ export function poseFor(anim: string, t: number, cycle: number, quadruped: boole
 
     case 'punch':
     case 'attack': {
+      if (quadruped) {
+        // Four-legged models have no usable arms, so they strike by lunging:
+        // the body pitches nose-down over its front legs and drives forward.
+        const u = Math.min(1, t);
+        const strike = u < 0.35 ? u / 0.35 : Math.max(0, 1 - (u - 0.35) / 0.65);
+        p[BONE.ROOT] = { rx: -strike * 0.38, ty: strike * 6 };
+        p[BONE.LEG_L] = { rx: strike * 0.55 };
+        p[BONE.LEG_R] = { rx: strike * 0.55 };
+        p[BONE.TAIL] = { ry: Math.sin(u * Math.PI * 2) * 0.6 };
+        return p;
+      }
       const swing = Math.sin(Math.min(1, t) * Math.PI);
       p[BONE.ARM_R] = { rx: -swing * 1.9 };
       p[BONE.ARM_L] = { rx: swing * 0.4 };
@@ -126,13 +148,28 @@ export function poseFor(anim: string, t: number, cycle: number, quadruped: boole
       return p;
     }
     case 'bow':
-    case 'crossbow':
+    case 'crossbow': {
+      // Draw the string back to the cheek, then snap it loose and recoil.
+      // The weapon bone sits on the right, so that is the arm holding the bow.
+      const u = Math.min(1, t);
+      const draw = u < 0.55 ? u / 0.55 : Math.max(0, 1 - (u - 0.55) / 0.25);
+      const recoil = Math.sin(Math.max(0, (u - 0.55) / 0.45) * Math.PI);
+      p[BONE.ARM_R] = { rx: -1.5, rz: -0.12 };
+      p[BONE.ARM_L] = { rx: -1.32 + draw * 0.42, rz: 0.34 + draw * 0.62 };
+      p[BONE.WEAPON] = { rx: -1.5, rz: 0.18 };
+      p[BONE.TORSO] = { ry: 0.45 - recoil * 0.16 };
+      p[BONE.HEAD] = { ry: 0.28 };
+      return p;
+    }
     case 'throw': {
-      const draw = Math.sin(Math.min(1, t) * Math.PI);
-      p[BONE.ARM_L] = { rx: -1.45 };
-      p[BONE.ARM_R] = { rx: -1.2 + draw * 0.5 };
-      p[BONE.WEAPON] = { rx: -1.45, rz: 0.2 };
-      p[BONE.TORSO] = { ry: 0.45 };
+      // Wind up over the shoulder, then fling forward.
+      const u = Math.min(1, t);
+      const wind = u < 0.4 ? u / 0.4 : Math.max(0, 1 - (u - 0.4) / 0.6);
+      const release = Math.max(0, (u - 0.4) / 0.6);
+      p[BONE.ARM_R] = { rx: -2.45 * wind + release * 1.7, rz: -0.28 * wind };
+      p[BONE.ARM_L] = { rx: -0.85 - wind * 0.35 };
+      p[BONE.WEAPON] = { rx: -2.2 * wind + release * 1.5 };
+      p[BONE.TORSO] = { ry: 0.42 * wind - release * 0.3 };
       return p;
     }
     case 'cast': {
@@ -144,8 +181,19 @@ export function poseFor(anim: string, t: number, cycle: number, quadruped: boole
       return p;
     }
     case 'block': {
-      p[BONE.ARM_L] = { rx: -1.1 };
-      p[BONE.SHIELD] = { rx: -0.7 };
+      // Played on whoever just took a hit, so it has to read as a flinch.
+      const recoil = Math.sin(Math.min(1, t) * Math.PI);
+      if (quadruped) {
+        p[BONE.ROOT] = { rx: recoil * 0.22, ty: recoil * 2 };
+        p[BONE.LEG_L] = { rx: -recoil * 0.3 };
+        p[BONE.LEG_R] = { rx: -recoil * 0.3 };
+        p[BONE.TAIL] = { ry: recoil * 0.5 };
+        return p;
+      }
+      p[BONE.ROOT] = { rx: recoil * 0.16 };
+      p[BONE.ARM_L] = { rx: -1.1 * recoil, rz: 0.2 * recoil };
+      p[BONE.SHIELD] = { rx: -0.7 * recoil };
+      p[BONE.HEAD] = { rx: recoil * 0.2 };
       return p;
     }
     case 'death': {

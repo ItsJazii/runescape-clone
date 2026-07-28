@@ -16,7 +16,8 @@
     "check:play": "tsx tools/play-check.ts",
     "check:client": "node tools/client-check.mjs",
     "shots:tabs": "node tools/tabshots.mjs",
-    "shots:world": "node tools/worldshots.mjs"
+    "shots:world": "node tools/worldshots.mjs",
+    "shots:combat": "node tools/combatshots.mjs"
   },
   "dependencies": {
     "ws": "8.18.0"

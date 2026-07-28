@@ -109,7 +109,9 @@ await wait(400);
 check('hovering empty ground shows "Walk here"', (await g(() => window.game.hoverText)) === 'Walk here', await g(() => window.game.hoverText));
 
 // Find a tree and check it is actually clickable at its rendered position.
-await chat('::tele 3221 3203');
+// Always name the plane: a previous run leaves the account upstairs in the
+// bank, and a plane-less teleport would keep it there.
+await chat('::tele 3221 3203 0');
 await wait(1500);
 const treePos = await g(() => window.game.objectScreenPos('Tree'));
 check('a tree is found in the rendered scene', !!treePos, JSON.stringify(treePos));
@@ -152,7 +154,7 @@ if (treePos2) {
 
 /* ---------------------------------------------------------------- */
 heading('fighting a chicken by clicking');
-await chat('::tele 3233 3295');
+await chat('::tele 3233 3295 0');
 await wait(2000);
 await chat('::setlevel attack 30');
 await chat('::setlevel strength 30');
@@ -221,13 +223,15 @@ await page.keyboard.press('Escape');
 await wait(300);
 await click(s0.x, s0.y);
 await wait(1200);
-const wielded = await g(() => window.game.inventory.every((i) => !i || i.name !== 'Bronze sword'));
-check('left-clicking a weapon wields it', wielded, JSON.stringify(await g(() => window.game.inventory.filter(Boolean))));
+// Assert on the weapon slot rather than on the inventory: `::empty` does not
+// strip equipment, so a sword worn by an earlier run swaps back into the bag.
+const weapon = await g(() => window.game.equipment[3]);
+check('left-clicking a weapon wields it', weapon?.name === 'Bronze sword', JSON.stringify(weapon));
 await shot('c12-wielded');
 
 /* ---------------------------------------------------------------- */
 heading('shops and dialogue through the UI');
-await chat('::tele 3212 3245');
+await chat('::tele 3212 3245 0');
 await wait(2500);
 const keeper = await g(() => window.game.npcScreenPos('Shop keeper'));
 check('the shop keeper is on screen', !!keeper, JSON.stringify(keeper));

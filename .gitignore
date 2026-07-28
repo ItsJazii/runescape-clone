@@ -8,3 +8,6 @@ tools/shots/
 
 # Local tool permissions, specific to one machine.
 .devin/config.local.json
+
+# Scratch session notes, not part of the game.
+memory.html
