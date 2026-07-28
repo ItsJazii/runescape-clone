@@ -21,6 +21,7 @@ const URL = process.argv[2] ?? 'ws://localhost:43594';
 const NAME = process.argv[3] ?? 'Probe';
 
 const world = getWorld().map;
+const collision = getWorld().collision;
 
 /* ------------------------------------------------------------------ */
 /* Client                                                              */
@@ -394,24 +395,42 @@ c.cmd('::empty');
 await wait(TICK * 2);
 c.cmd('::item 303 1'); // Small fishing net
 await wait(TICK * 2);
-// Fishing spots are NPCs; find one from the spawn list and teleport beside it.
+// Fishing spots are NPCs. Land a short walk away rather than beside the spot:
+// teleporting onto the bank hid the fact that three of the four net spots used
+// to sit in unreachable open water, so the walk is the part worth testing.
 const netSpotDef = allNpcs().find((d) => d.name === 'Fishing spot' && d.options.includes('Net'));
 const netSpawn = netSpotDef ? world.npcSpawns.find((s) => s.def === netSpotDef.id) : undefined;
 check('the map has a net fishing spot', !!netSpawn, JSON.stringify(netSpawn));
 if (netSpawn) {
-  // Land beside the spot; the shore is a tile away from the water.
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) {
-    c.cmd(`::tele ${netSpawn.x + dx} ${netSpawn.y + dy}`);
+  const bank = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as [number, number][])
+    .map(([dx, dy]) => [netSpawn.x + dx, netSpawn.y + dy] as [number, number])
+    .find(([x, y]) => collision.walkable(x, y, netSpawn.plane));
+  check('the fishing spot has a bank to stand on', !!bank, `spot=(${netSpawn.x},${netSpawn.y})`);
+
+  // A tile several steps back from the bank, so the server has to path there.
+  let start: [number, number] | undefined;
+  if (bank) {
+    for (const [dx, dy] of [[0, 5], [0, -5], [5, 0], [-5, 0], [3, 3], [-3, -3]] as [number, number][]) {
+      if (collision.walkable(bank[0] + dx, bank[1] + dy, netSpawn.plane)) {
+        start = [bank[0] + dx, bank[1] + dy];
+        break;
+      }
+    }
+  }
+  if (start) {
+    c.cmd(`::tele ${start[0]} ${start[1]} ${netSpawn.plane}`);
     await wait(TICK * 2);
-    if (c.self!.x === netSpawn.x + dx && c.self!.y === netSpawn.y + dy) break;
   }
   const spot = c.npcs.find((n) => n.def === netSpotDef!.id);
   check('the fishing spot is visible to the client', !!spot, `npcs=${c.npcs.length}`);
   if (spot) {
+    const away = Math.max(Math.abs(c.self!.x - spot.x), Math.abs(c.self!.y - spot.y));
+    check('the probe starts away from the spot', away > 1, `distance=${away}`);
     c.clearLog();
     c.send({ t: 'npcAction', npc: spot.i, action: 'Net' });
     const caught = await until(() => c.count(317) > 0 || c.count(321) > 0, 40);
-    check('netting a fishing spot catches shrimp', caught, c.log.slice(-4).join(' | '));
+    check('walking to a fishing spot and netting it catches shrimp', caught, c.log.slice(-4).join(' | '));
+    check('fishing does not report "I can\'t reach that!"', !c.said("can't reach"), c.log.slice(-4).join(' | '));
     check('fishing xp is awarded', c.xpDrops.some((d) => d.skill === Skill.FISHING), JSON.stringify(c.xpDrops));
   }
 }

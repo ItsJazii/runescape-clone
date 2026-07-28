@@ -421,6 +421,15 @@ export class MapBuilder {
     return this.inBounds(x, y) && this.collision.get(x, y, plane) === 0;
   }
 
+  /** True when the tile's terrain is water, from either the underlay or the overlay. */
+  isWater(x: number, y: number, plane = 0): boolean {
+    if (!this.inBounds(x, y)) return false;
+    const idx = this.ti(x, y, plane);
+    if (terrainType(this.map.underlay[idx]).water) return true;
+    const over = this.map.overlay[idx];
+    return over !== 0 && !!terrainType(over).water;
+  }
+
   /** Applies the collision flags implied by the map's water/blocked terrain. */
   finalise(): void {
     const { minX, minY, width, height, planes } = this.map;

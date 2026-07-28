@@ -21,8 +21,8 @@ npm run dev            # server + vite client with hot reload
 npm start              # production server, serves dist/client on :43594
 npm run build          # tsc --noEmit && vite build
 npm run typecheck      # tsc --noEmit (covers src/**/*.ts, including tests)
-npm test               # 122 unit tests, no server needed
-npm run check:play     # 91-check full gameplay probe over the wire, NEEDS a running server
+npm test               # 127 unit tests, no server needed
+npm run check:play     # 94-check full gameplay probe over the wire, NEEDS a running server
 npm run check:client   # 50-check Playwright run that plays through the real UI, NEEDS a server
 npm run check:social   # friends/ignore/private-chat integration check, NEEDS a running server
 npm run shots:tabs     # captures the Skills/Prayer/Magic tabs with hover readouts
@@ -56,6 +56,9 @@ Screenshots are 1530x1006, exactly 2x the game's 765x503 layout, so **screenshot
 - **Character bones are flat, not hierarchical** (`buildBoneMatrices`): rotating `TORSO` does not carry the arms, so a pose must drive every bone it needs. Four-legged models (`isQuadruped()` in `gl/animation.ts`) reuse `ARM_L`/`ARM_R` as hind legs and pincers and sit far below the humanoid pivots, so arm-driven poses must never be applied to them — drive `ROOT`/legs/tail instead. `src/test/animation.test.ts` guards this by building each NPC mesh and asserting its attack pose moves bones the mesh actually has.
 - **Poses are sine-based**, so at `t = 0` and `t = 1` they evaluate to ~`1e-16`, not exactly zero. Compare against an epsilon.
 - **NPCs wander**, so any test that needs to stand next to one must re-locate it rather than trusting a spawn coordinate. `tools/play-check.ts` has `stepOntoNpc()` for this.
+- **A probe that teleports next to its target cannot see reachability bugs.** Fishing shipped completely broken this way: fishing spots are NPCs standing on water and three of the four net spots sat in open water with no walkable tile touching them, so clicking one only ever said `I can't reach that!` — but `check:play` teleported onto the bank first, so all 91 checks passed. `anchorFishingSpots()` in `src/shared/world/lumbridge.ts` now snaps every spot onto a water tile whose bank belongs to a walkable region of at least 400 tiles, and `src/test/world.test.ts` asserts it. When adding an interaction, make the probe **walk** to it.
+- **Reachability is not "flood fill from `SPAWN_POINT`".** The spawn is inside Lumbridge Castle courtyard, and closed doors block `canMove`, so that fill reaches only 137 tiles. Use connected-region size to tell open countryside from an enclosed pocket.
+- **`findPath` only accepts orthogonally adjacent goals** (`adjacent: true`), while `processPending` accepts Chebyshev range 1. A target whose only walkable neighbours are diagonal is therefore unreachable even though the range check would have allowed it.
 - **Aggression is capped by combat level.** `NpcDef.aggroMaxLevel` (15 for a Dark wizard) means a boosted test account is ignored; reset the combat stats before testing aggro.
 - UI overlays drawn inside the viewport must be listed in `UI.overlayCoversViewport()`, otherwise world-space labels, hitsplats and the click marker paint on top of them.
 - **Panel content must fit `PANEL.h` (261px).** The Skills, Prayer, Magic and Getting Started tabs all draw a grid plus a description strip; overflow spills into the bottom tab row at y=466 rather than being clipped.
