@@ -3,6 +3,7 @@
  * RuneScape coordinate grid (Lumbridge Castle courtyard is 3222, 3218).
  */
 
+import { DIR_DX, DIR_DY } from '../constants.ts';
 import * as N from '../data/npcs.ts';
 import * as O from '../data/objects.ts';
 import { MapBuilder, hashNoise } from './builder.ts';
@@ -46,7 +47,126 @@ export function buildWorld(): MapBuilder {
   namedAreas(b);
 
   b.finalise();
+  anchorFishingSpots(b);
   return b;
+}
+
+/** Fishing spot ids, which are NPCs rather than scenery. */
+const FISHING_SPOT_IDS = [N.FISHING_SPOT_NET.id, N.FISHING_SPOT_LURE.id, N.FISHING_SPOT_CAGE.id];
+
+const ORTHOGONAL: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+
+/** How far from its authored tile a spot may be nudged to find the shore. */
+const SHORE_SEARCH_RADIUS = 12;
+
+/**
+ * Smallest connected walkable area that counts as open countryside rather
+ * than a pocket. Enclosed rooms are far smaller than this - the castle
+ * courtyard is 137 tiles - so the threshold separates a real river bank from
+ * a sandbar or a walled garden you could never walk in from.
+ */
+const MIN_SHORE_REGION = 400;
+
+/**
+ * You fish from the bank, standing on a tile beside the spot, so a spot in
+ * open water can never be used: the pathfinder walks you as close as it can
+ * and the interaction dies with "I can't reach that!". Subtler, a shore tile
+ * cut off from the countryside (a sandbar, say) looks fine but is reachable
+ * only by teleporting, which is exactly how this shipped broken - the
+ * integration probe teleports beside a spot before fishing, so it never
+ * walked there and never noticed.
+ *
+ * Rather than trust hand-authored coordinates - which silently drift into the
+ * river whenever the terrain around them changes - every spot is snapped onto
+ * a water tile whose bank belongs to a large walkable region. Runs after
+ * `finalise()`, since that is what applies the water collision flags this
+ * depends on.
+ */
+function anchorFishingSpots(b: MapBuilder): void {
+  const plane = SPAWN_POINT.plane;
+  const regions = walkableRegions(b, plane);
+  const onShore = (x: number, y: number) =>
+    ORTHOGONAL.some(([dx, dy]) => regions.sizeAt(x + dx, y + dy) >= MIN_SHORE_REGION);
+
+  for (const spawn of b.map.npcSpawns) {
+    if (!FISHING_SPOT_IDS.includes(spawn.def) || spawn.plane !== plane) continue;
+    if (onShore(spawn.x, spawn.y)) continue;
+    const shore = nearestShore(b, spawn.x, spawn.y, spawn.plane, onShore);
+    if (!shore) continue;
+    spawn.x = shore[0];
+    spawn.y = shore[1];
+  }
+}
+
+/**
+ * Labels every walkable tile on a plane with its connected region and returns
+ * a lookup for how big the region under a tile is. Movement follows
+ * `canMove`, so walls and closed doors partition regions exactly as they
+ * partition walking.
+ */
+function walkableRegions(b: MapBuilder, plane: number): { sizeAt(x: number, y: number): number } {
+  const { minX, minY, width, height } = b.map;
+  const at = (x: number, y: number) => (y - minY) * width + (x - minX);
+  const label = new Int32Array(width * height).fill(-1);
+  const sizes: number[] = [];
+
+  for (let y = minY; y < minY + height; y++) {
+    for (let x = minX; x < minX + width; x++) {
+      if (label[at(x, y)] !== -1 || !b.collision.walkable(x, y, plane)) continue;
+      const id = sizes.length;
+      const queue: [number, number][] = [[x, y]];
+      label[at(x, y)] = id;
+      for (let head = 0; head < queue.length; head++) {
+        const [cx, cy] = queue[head];
+        for (let dir = 0; dir < 8; dir++) {
+          const nx = cx + DIR_DX[dir];
+          const ny = cy + DIR_DY[dir];
+          if (!b.collision.inBounds(nx, ny) || label[at(nx, ny)] !== -1) continue;
+          if (!b.collision.canMove(cx, cy, plane, DIR_DX[dir], DIR_DY[dir])) continue;
+          label[at(nx, ny)] = id;
+          queue.push([nx, ny]);
+        }
+      }
+      sizes.push(queue.length);
+    }
+  }
+
+  return {
+    sizeAt(x: number, y: number): number {
+      if (!b.collision.inBounds(x, y)) return 0;
+      const id = label[at(x, y)];
+      return id < 0 ? 0 : sizes[id];
+    },
+  };
+}
+
+/**
+ * Closest water tile to (x, y) that a fisher can stand beside, searched in
+ * rings so the spot moves as little as possible. Falls back to any qualifying
+ * tile if no water is close enough, since a reachable spot on the bank still
+ * beats an unusable one in the middle of the river.
+ */
+function nearestShore(
+  b: MapBuilder,
+  x: number,
+  y: number,
+  plane: number,
+  onShore: (x: number, y: number) => boolean,
+): [number, number] | null {
+  let fallback: [number, number] | null = null;
+  for (let r = 0; r <= SHORE_SEARCH_RADIUS; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const tx = x + dx;
+        const ty = y + dy;
+        if (!b.collision.inBounds(tx, ty) || !onShore(tx, ty)) continue;
+        if (b.isWater(tx, ty, plane)) return [tx, ty];
+        fallback ??= [tx, ty];
+      }
+    }
+  }
+  return fallback;
 }
 
 /* ================================================================== */
