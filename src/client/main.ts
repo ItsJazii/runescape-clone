@@ -593,14 +593,18 @@ function updateAudio(): void {
   const self = state.self;
   if (self) {
     const area = areaAt(scene.map.areas, Math.round(self.renderX), Math.round(self.renderY));
-    if (area !== currentArea) {
-      currentArea = area;
-      const name = (area && AREA_TRACKS[area]) || DEFAULT_TRACK;
-      ui.unlockTrack(name);
-      if (!ui.musicPinned) {
-        const compiled = track(name);
-        if (compiled) audio.playTrack(name, compiled);
-      }
+    const entered = area !== currentArea;
+    currentArea = area;
+    const name = (area && AREA_TRACKS[area]) || DEFAULT_TRACK;
+    if (entered) ui.unlockTrack(name);
+    // Start the area's track on entering a new area, and also whenever music
+    // is meant to be playing but nothing is: the first frame after login, and
+    // after music is switched back on in Options, which would otherwise stay
+    // silent until the player happened to cross an area boundary. `playTrack`
+    // ignores a request for the track already playing, so this is cheap.
+    if (!ui.musicPinned && audio.musicEnabled && (entered || !audio.playing)) {
+      const compiled = track(name);
+      if (compiled) audio.playTrack(name, compiled);
     }
   }
   audio.update();

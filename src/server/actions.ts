@@ -578,7 +578,7 @@ function smelt(player: Player, barId: number, amount: number): void {
   let made = 0;
   player.startAction({
     name: 'smelting',
-    tick(p) {
+    tick(p, worldTick) {
       if (made >= amount) return false;
       for (const [ore, qty] of spec.inputs) {
         if (p.inventory.count(ore) < qty) {
@@ -592,7 +592,7 @@ function smelt(player: Player, barId: number, amount: number): void {
       }
       for (const [ore, qty] of spec.inputs) p.inventory.remove(ore, qty);
       made++;
-      p.playAnimation('smith', 0);
+      p.playAnimation('smith', worldTick);
       if (spec.successChance !== undefined && Math.random() > spec.successChance) {
         p.message('The ore is too impure and you fail to refine it.');
       } else {
@@ -639,7 +639,7 @@ function smithItem(player: Player, barId: number, product: { item: number; bars:
   let made = 0;
   player.startAction({
     name: 'smithing',
-    tick(p) {
+    tick(p, worldTick) {
       if (made >= amount) return false;
       if (p.inventory.count(barId) < product.bars) {
         p.message(`You need ${product.bars} bars to make this.`);
@@ -653,7 +653,7 @@ function smithItem(player: Player, barId: number, product: { item: number; bars:
       p.inventory.add(product.item, 1);
       p.addXp(Skill.SMITHING, SMITH_XP_PER_BAR * product.bars);
       p.sendInventory();
-      p.playAnimation('smith', 0);
+      p.playAnimation('smith', worldTick);
       p.message(`You hammer the metal into ${itemDef(product.item)?.name.toLowerCase()}.`);
       made++;
       p.actionDelay = 4;
@@ -702,7 +702,7 @@ export function produce(
   let made = 0;
   player.startAction({
     name: 'producing',
-    tick(p) {
+    tick(p, worldTick) {
       if (made >= times) return false;
       for (const [item, qty] of inputs) {
         if (p.inventory.count(item) < qty) {
@@ -714,7 +714,7 @@ export function produce(
       p.inventory.add(output, outputAmount);
       p.addXp(skill, xp);
       p.sendInventory();
-      p.playAnimation('craft', 0);
+      p.playAnimation('craft', worldTick);
       made++;
       p.actionDelay = delay;
       return true;

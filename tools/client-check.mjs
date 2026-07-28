@@ -362,10 +362,19 @@ await click(PANEL_X + 94, PANEL_Y + 80);
 await wait(400);
 const muted = await g(() => window.game.audio);
 check('the Music toggle switches music off', muted.musicEnabled === !beforeMute.musicEnabled, JSON.stringify(muted));
+check('switching music off stops the track', muted.playing === null, JSON.stringify(muted));
 await click(PANEL_X + 94, PANEL_Y + 80);
-await wait(400);
+await wait(1200);
 const unmuted = await g(() => window.game.audio);
 check('the Music toggle switches back on', unmuted.musicEnabled === beforeMute.musicEnabled, JSON.stringify(unmuted));
+// Regression: re-enabling only restored the volume, and the area track was
+// restarted solely on an area change, so the game stayed silent while the
+// toggle read "On" until the player wandered into somewhere new.
+check(
+  'switching music back on resumes a track without leaving the area',
+  typeof unmuted.playing === 'string' && unmuted.playing.length > 0,
+  JSON.stringify(unmuted),
+);
 
 /* ---------------------------------------------------------------- */
 console.log('\n=======================================================');

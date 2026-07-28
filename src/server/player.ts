@@ -19,8 +19,13 @@ import { Entity } from './entity.ts';
 
 export interface PlayerAction {
   name: string;
-  /** Runs each tick while the action is active. Return false to stop. */
-  tick(player: Player): boolean;
+  /**
+   * Runs each tick while the action is active. Return false to stop.
+   * `worldTick` is the current tick, which repeating actions need in order to
+   * stamp `playAnimation` - an animation whose start tick never changes is
+   * treated as long finished by the client and never plays.
+   */
+  tick(player: Player, worldTick: number): boolean;
   onStop?(player: Player): void;
 }
 
