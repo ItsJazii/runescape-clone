@@ -20,7 +20,6 @@ describe('resolveStaticFile', () => {
     writeFileSync(join(clientDir, 'index.html'), '<html>ok</html>');
     writeFileSync(join(clientDir, 'assets', 'app.js'), 'console.log(1);');
     writeFileSync(join(siblingDir, 'secret.txt'), 'top-secret');
-    symlinkSync(join(siblingDir, 'secret.txt'), join(clientDir, 'leak.txt'));
   });
 
   after(() => {
@@ -53,7 +52,18 @@ describe('resolveStaticFile', () => {
     assert.equal(resolveStaticFile(clientDir, '/..\\client-secrets\\secret.txt').status, 403);
   });
 
-  it('does not follow symlinks that escape the client directory', () => {
+  it('does not follow symlinks that escape the client directory', (t) => {
+    const linkPath = join(clientDir, 'leak.txt');
+    try {
+      symlinkSync(join(siblingDir, 'secret.txt'), linkPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EPERM' || code === 'EACCES') {
+        t.skip('symlink creation requires elevated privileges on this platform');
+        return;
+      }
+      throw err;
+    }
     const res = resolveStaticFile(clientDir, '/leak.txt');
     assert.equal(res.status, 200);
     assert.equal(res.filePath, join(clientDir, 'index.html'));
