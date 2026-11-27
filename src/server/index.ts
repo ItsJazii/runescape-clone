@@ -1,6 +1,6 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 
@@ -27,6 +27,7 @@ import {
 } from './actions.ts';
 import { advanceDialogue } from './dialogue.ts';
 import { Player, normaliseName, sameName } from './player.ts';
+import { createStaticHandler } from './static.ts';
 import { World } from './world.ts';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -93,31 +94,7 @@ function savePlayer(player: Player): void {
 /* Static file serving (production build)                              */
 /* ------------------------------------------------------------------ */
 
-const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-};
-
-function serveStatic(req: IncomingMessage, res: ServerResponse): void {
-  if (!existsSync(CLIENT_DIR)) {
-    res.writeHead(200, { 'content-type': 'text/plain' });
-    res.end('Old School RuneScape clone server is running.\nStart the client with: npm run dev');
-    return;
-  }
-  const url = (req.url ?? '/').split('?')[0];
-  let path = join(CLIENT_DIR, normalize(url === '/' ? '/index.html' : url));
-  if (!path.startsWith(CLIENT_DIR)) path = join(CLIENT_DIR, 'index.html');
-  if (!existsSync(path)) path = join(CLIENT_DIR, 'index.html');
-  res.writeHead(200, { 'content-type': MIME[extname(path)] ?? 'application/octet-stream' });
-  res.end(readFileSync(path));
-}
-
-const http = createServer(serveStatic);
+const http = createServer(createStaticHandler(CLIENT_DIR));
 const wss = new WebSocketServer({ server: http });
 
 /* ------------------------------------------------------------------ */
